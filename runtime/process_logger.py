@@ -7,9 +7,22 @@ from pathlib import Path
 from typing import Callable
 
 
+_LOG_DIR = Path(__file__).resolve().parent.parent / "data" / "logs"
+
+
 def log_console(message: str) -> None:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-    print(f"[{ts}] {message}")
+    line = f"[{ts}] {message}"
+    print(line, flush=True)
+    # Append to daily log file (flush immediately so nothing is lost on crash)
+    try:
+        _LOG_DIR.mkdir(parents=True, exist_ok=True)
+        log_file = _LOG_DIR / f"console_{datetime.now().strftime('%Y%m%d')}.log"
+        with log_file.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
+            f.flush()
+    except Exception:
+        pass
 
 
 def append_error_log(error_dir: Path, error_log_file: Path, context: str, exc: Exception) -> None:

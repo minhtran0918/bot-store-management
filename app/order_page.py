@@ -223,7 +223,8 @@ class OrderPage:
 
             # Send everything at once
             self.send_message_button().click(timeout=3000)
-            self.page.wait_for_timeout(1500)
+            send_delay = int((2 + 0.5 * img_count) * 1000)
+            self.page.wait_for_timeout(send_delay)
 
             # Check if message send failed (grey-out + error icon)
             if self._check_message_send_error():
@@ -647,6 +648,27 @@ class OrderPage:
     def _reply_comment_fallback(self, partner_name: str) -> bool:
         """When inbox message fails, reply to the first user comment on the post."""
         try:
+            # Scroll message area up until the original post (ms-extras-message-item) is visible
+            # The container uses flex-col-reverse, so we mouse-wheel scroll up
+            scroll_area = self.page.locator("div#scrollMe").first
+            post_block = self.page.locator("ms-extras-message-item").first
+            if scroll_area.count() > 0:
+                box = scroll_area.bounding_box()
+                if box:
+                    # Hover over center of scroll area
+                    cx = box["x"] + box["width"] / 2
+                    cy = box["y"] + box["height"] / 2
+                    self.page.mouse.move(cx, cy)
+                    self.page.wait_for_timeout(300)
+                    # Scroll up (negative deltaY) until post block is visible
+                    for i in range(30):
+                        if post_block.count() > 0 and post_block.is_visible():
+                            _log(f"  Scrolled up {i} times to reach post block")
+                            break
+                        self.page.mouse.wheel(0, -600)
+                        self.page.wait_for_timeout(400)
+                    self.page.wait_for_timeout(500)
+
             # Find user comments (is_client class = customer comments)
             user_comments = self.page.locator(
                 "div.log-comment.is_client, "

@@ -98,6 +98,7 @@ def main():
         summary_items.append(("Orders", confirm_count_text))
     show_summary(summary_items)
 
+    log_console("=" * 80)
     log_console(
         f"[CLI] Selected options | feature={feature_run} | campaign='{campaign_label}' "
         f"| csv_mode={csv_mode} | csv_path={selected_csv_text} | confirm_orders={confirm_count_text}"
@@ -174,17 +175,26 @@ def main():
             log_exception_trace("main_run_failed", exc)
             keep_browser_open_for_debug(page, config, "Run failed", log_console, log_exception_trace)
         finally:
-            set_confirm_reset_table_view(None)
             try:
-                if context is not None:
-                    context.storage_state(path=str(SESSION_FILE))
-            except Exception as exc:
-                log_console(f"[SHUTDOWN] Skip saving session state: {exc}")
+                set_confirm_reset_table_view(None)
+                try:
+                    if context is not None:
+                        context.storage_state(path=str(SESSION_FILE))
+                except Exception as exc:
+                    log_console(f"[SHUTDOWN] Skip saving session state: {exc}")
 
-            safe_close(context, "browser context", log_console)
-            safe_close(browser, "browser", log_console)
-            flush_stdio()
+                safe_close(context, "browser context", log_console)
+                safe_close(browser, "browser", log_console)
+            except KeyboardInterrupt:
+                log_console("[INTERRUPT] Forced stop during cleanup (Ctrl+C x2). Exiting.")
+            finally:
+                log_console("[SHUTDOWN] Process ended.")
+                flush_stdio()
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        log_console("[INTERRUPT] Process killed by user.")
+        flush_stdio()

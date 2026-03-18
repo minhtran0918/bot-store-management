@@ -17,8 +17,8 @@ credentials:
   password: "An12345678"
 
 auth:
-  capture_enabled: true
-  bootstrap_from_token: true
+  capture_enabled: false
+  bootstrap_from_token: false
   login_url: "https://linhdanshopld.tpos.vn/tpagev2/#/account/login"
   dashboard_url: "https://linhdanshopld.tpos.vn/tpagev2/#/dashboard"
   order_url: "https://linhdanshopld.tpos.vn/tpagev2/#/order"
