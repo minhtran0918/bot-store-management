@@ -1,0 +1,27 @@
+@echo off
+chcp 65001 >nul
+title Bot Store Management
+
+REM Check Python is available
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Python not found. Please run install.bat first!
+    pause
+    exit /b 1
+)
+
+REM Check that Playwright is installed
+python -c "import playwright" >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Setup incomplete. Please run install.bat first!
+    pause
+    exit /b 1
+)
+
+REM Create data directories if they do not exist
+if not exist "data" mkdir data
+if not exist "data\error" mkdir data\error
+
+python main.py
+echo.
+pause

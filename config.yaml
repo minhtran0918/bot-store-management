@@ -1,0 +1,31 @@
+site: linhdanshopld
+base_url: "https://linhdanshopld.tpos.vn/tpagev2"
+headless: false
+
+messages:
+  ask_address: "Chị/anh cho shop xin địa chỉ nhận hàng giúp em nhé."
+
+keywords:
+  pickup:
+    - "ghé lấy"
+    - "tự lấy"
+    - "lấy tại shop"
+  match_product: []
+
+credentials:
+  username: "0915500082"
+  password: "An12345678"
+
+auth:
+  capture_enabled: true
+  bootstrap_from_token: true
+  login_url: "https://linhdanshopld.tpos.vn/tpagev2/#/account/login"
+  dashboard_url: "https://linhdanshopld.tpos.vn/tpagev2/#/dashboard"
+  order_url: "https://linhdanshopld.tpos.vn/tpagev2/#/order"
+  indexeddb_token_key: "TpageBearerToken"
+  token_file: "data/auth_token.json"
+
+debug:
+  keep_open: true
+  keep_open_seconds: 180
+
