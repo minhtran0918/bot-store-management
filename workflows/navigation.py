@@ -9,6 +9,12 @@ def goto_orders(page, config: dict, log_console) -> None:
 
     log_console(f"[NAV] Open order page: {order_url}")
     page.goto(order_url)
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state("domcontentloaded")
+    # Wait for the order table to render (Angular components finish initializing).
+    # "networkidle" is too slow on SPAs that continuously poll the API.
+    try:
+        page.wait_for_selector("table tbody tr, tbody tr", state="visible", timeout=8000)
+    except Exception:
+        pass
     log_console(f"[NAV] Order page loaded: {page.url}")
 

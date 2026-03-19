@@ -104,6 +104,9 @@ def load_config(path: Path | str = "config.yaml") -> dict:
     credentials = raw.get("credentials") if isinstance(raw.get("credentials"), dict) else {}
     auth = raw.get("auth") if isinstance(raw.get("auth"), dict) else {}
     debug = raw.get("debug") if isinstance(raw.get("debug"), dict) else {}
+    bot = raw.get("bot") if isinstance(raw.get("bot"), dict) else {}
+    features = raw.get("features") if isinstance(raw.get("features"), dict) else {}
+    timeouts = raw.get("timeouts") if isinstance(raw.get("timeouts"), dict) else {}
 
     pickup = keywords.get("pickup", [])
     if not isinstance(pickup, list):
@@ -115,13 +118,27 @@ def load_config(path: Path | str = "config.yaml") -> dict:
         keep_open_seconds = 120
     keep_open_seconds = max(0, keep_open_seconds)
 
+    # Collect all message template lists (passed through as-is for BotConfig)
+    messages_out: dict = {
+        "ask_address": str(messages.get("ask_address", "")).strip(),
+    }
+    for tpl_key in ("ask_address_templates", "comment_fallback_templates"):
+        val = messages.get(tpl_key)
+        if isinstance(val, list):
+            messages_out[tpl_key] = [str(s) for s in val]
+    for tpl_key in ("deposit_template",):
+        val = messages.get(tpl_key)
+        if isinstance(val, str):
+            messages_out[tpl_key] = val
+
     config = {
         "site": str(raw.get("site", "")).strip(),
         "base_url": base_url,
         "headless": _to_bool(raw.get("headless"), False),
-        "messages": {
-            "ask_address": str(messages.get("ask_address", "")).strip(),
-        },
+        "messages": messages_out,
+        "bot": bot,
+        "features": features,
+        "timeouts": timeouts,
         "keywords": {
             "pickup": [str(item) for item in pickup],
         },

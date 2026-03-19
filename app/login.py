@@ -209,18 +209,21 @@ def _quarantine_bad_session(path: Path) -> None:
 		pass
 
 
+_VIEWPORT = {"width": 1440, "height": 900}
+
+
 def new_context(browser, session_file: Path):
 	if session_file.exists() and _is_valid_storage_state_file(session_file):
 		try:
-			return browser.new_context(storage_state=str(session_file))
+			return browser.new_context(storage_state=str(session_file), viewport=_VIEWPORT)
 		except Exception as exc:
 			print(f"Session restore failed, fallback to new session: {exc}")
 			_quarantine_bad_session(session_file)
-			return browser.new_context()
+			return browser.new_context(viewport=_VIEWPORT)
 
 	if session_file.exists():
 		print("Session file is invalid or empty, starting with a fresh session.")
 		_quarantine_bad_session(session_file)
 
-	return browser.new_context()
+	return browser.new_context(viewport=_VIEWPORT)
 

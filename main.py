@@ -4,13 +4,14 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright
 
 from app.auth import capture_and_save_auth_token
+from app.bot_config import BotConfig
 from app.login import ensure_login, new_context
 from app.order_page import OrderPage
 from app.store import log_action
 from app.config_loader import load_config
 from app.cli_helpers import (
-    FEATURE_COLLECT_ORDER,
     FEATURE_CONFIRM_ORDER,
+    FEATURE_ADD_PRODUCT,
     prompt_campaign_label,
     prompt_csv_output_path,
     prompt_existing_csv_required,
@@ -30,6 +31,7 @@ from runtime.process_logger import (
     keep_browser_open_for_debug,
     log_console,
     safe_close,
+    suppress_playwright_shutdown_noise,
 )
 
 
@@ -43,6 +45,7 @@ SESSION_FILE = DATA_DIR / "session.json"
 
 
 def main():
+    suppress_playwright_shutdown_noise()
     DATA_DIR.mkdir(exist_ok=True)
     ERROR_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -60,9 +63,9 @@ def main():
     confirm_input_csv_path: Path | None = None
     confirm_order_codes: list[str] = []
 
-    if feature_run == FEATURE_COLLECT_ORDER:
+    if feature_run == FEATURE_CONFIRM_ORDER:
         csv_output_path = prompt_csv_output_path(DATA_DIR)
-    elif feature_run == FEATURE_CONFIRM_ORDER:
+    elif feature_run == FEATURE_ADD_PRODUCT:
         confirm_input_csv_path = prompt_existing_csv_required(DATA_DIR)
         if confirm_input_csv_path is None:
             return
@@ -87,14 +90,14 @@ def main():
     log_exception_trace = build_exception_logger(ERROR_DIR, ERROR_LOG_FILE, log_console)
 
     selected_csv_text = str(csv_output_path.resolve()) if csv_output_path else "(auto new file)"
-    confirm_count_text = str(len(confirm_order_codes)) if feature_run == FEATURE_CONFIRM_ORDER else "n/a"
+    confirm_count_text = str(len(confirm_order_codes)) if feature_run == FEATURE_ADD_PRODUCT else "n/a"
 
     summary_items = [
         ("Feature", feature_run),
         ("Campaign", campaign_label),
         ("CSV", selected_csv_text),
     ]
-    if feature_run == FEATURE_CONFIRM_ORDER:
+    if feature_run == FEATURE_ADD_PRODUCT:
         summary_items.append(("Orders", confirm_count_text))
     show_summary(summary_items)
 
@@ -111,10 +114,16 @@ def main():
         page = None
         interrupted = False
         try:
-            browser = p.chromium.launch(headless=bool(config.get("headless", False)), slow_mo=200)
+            browser = p.chromium.launch(
+                headless=bool(config.get("headless", False)),
+                slow_mo=200,
+                args=[],
+            )
             context = new_context(browser, SESSION_FILE)
             page = context.new_page()
-            order_page = OrderPage(page)
+            page.evaluate("() => { window.moveTo(0,0); window.resizeTo(screen.availWidth, screen.availHeight); }")
+            bot_config = BotConfig(config)
+            order_page = OrderPage(page, bot_config)
 
             if not ensure_login(context, page, config, base_dir=BASE_DIR, session_file=SESSION_FILE, log_console=log_console):
                 log_action("auth", "login", "error", "timeout waiting manual login")
@@ -128,7 +137,7 @@ def main():
 
             log_action("system", "feature", "ok", feature_run)
 
-            if feature_run in (FEATURE_COLLECT_ORDER, FEATURE_CONFIRM_ORDER):
+            if feature_run in (FEATURE_CONFIRM_ORDER, FEATURE_ADD_PRODUCT):
                 try:
                     before_rows = order_page.all_rows().count()
                     log_console(f"[FILTER] Rows before applying campaign filter: {before_rows}")
@@ -139,7 +148,7 @@ def main():
                 except Exception as exc:
                     log_action("system", "campaign_filter", "warning", f"failed to apply '{campaign_label}': {exc}")
 
-            if feature_run == FEATURE_COLLECT_ORDER:
+            if feature_run == FEATURE_CONFIRM_ORDER:
                 run_collect_order_flow(
                     order_page=order_page,
                     campaign_label=campaign_label,
@@ -147,10 +156,11 @@ def main():
                     log_action=log_action,
                     csv_output_path=csv_output_path,
                     data_dir=DATA_DIR,
+                    bot_config=bot_config,
                 )
 
-            if feature_run == FEATURE_CONFIRM_ORDER:
-                log_console(f"[CONFIRM] Input CSV selected: {confirm_input_csv_path}")
+            if feature_run == FEATURE_ADD_PRODUCT:
+                log_console(f"[ADD_PRODUCT] Input CSV selected: {confirm_input_csv_path}")
                 set_confirm_reset_table_view(lambda: order_page.apply_campaign_filter(campaign_label))
                 run_confirm_order_from_csv(
                     order_page=order_page,

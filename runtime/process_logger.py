@@ -7,6 +7,47 @@ from pathlib import Path
 from typing import Callable
 
 
+# ---------------------------------------------------------------------------
+# Stderr filter — suppress asyncio "exception never retrieved" noise that
+# Playwright's background thread emits on forced Ctrl+C shutdown.
+# ---------------------------------------------------------------------------
+
+_PLAYWRIGHT_NOISE = (
+    "Task exception was never retrieved",
+    "Future exception was never retrieved",
+    "playwright._impl._errors",
+    "TargetClosedError: Target page",
+    "wait_for_load_state",
+)
+
+
+class _StderrFilter:
+    def __init__(self, wrapped):
+        self._w = wrapped
+        self._muting = False
+
+    def write(self, text: str):
+        if any(pat in text for pat in _PLAYWRIGHT_NOISE):
+            self._muting = True
+        if self._muting:
+            if text == "\n":
+                self._muting = False  # blank line = end of asyncio exception block
+            return
+        self._w.write(text)
+
+    def flush(self):
+        self._w.flush()
+
+    def __getattr__(self, name):
+        return getattr(self._w, name)
+
+
+def suppress_playwright_shutdown_noise() -> None:
+    """Install a stderr filter to hide asyncio noise from Playwright on forced exit."""
+    if not isinstance(sys.stderr, _StderrFilter):
+        sys.stderr = _StderrFilter(sys.stderr)
+
+
 _LOG_DIR = Path(__file__).resolve().parent.parent / "data" / "logs"
 
 

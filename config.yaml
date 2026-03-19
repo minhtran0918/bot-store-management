@@ -2,8 +2,58 @@ site: linhdanshopld
 base_url: "https://linhdanshopld.tpos.vn/tpagev2"
 headless: false
 
+# ─── Bot runtime settings ────────────────────────────────────────────────────
+bot:
+  test_max_collect_records: 3   # Limit rows per run (for testing). Set to null for full run.
+  max_images_per_send: 3        # Max images per message send (larger sets are split into batches).
+
+# ─── Feature flags ───────────────────────────────────────────────────────────
+features:
+  enable_comment_reply: false   # MESS 3: reply to FB comment. Disable when buggy.
+
+# ─── Playwright timing (milliseconds) ────────────────────────────────────────
+timeouts:
+  click: 3000            # General element click
+  click_slow: 5000       # Slow elements: filter panel, Apply button
+  modal: 6000            # Wait for order edit modal to appear
+  panel_open: 800        # After opening the message panel
+  text_fill: 300         # After filling a textarea
+  image_attach: 500      # After file chooser sets image files
+  image_pre_send_per_image: 200   # Per-image wait BEFORE clicking send
+  send_post_base: 1000            # Base wait AFTER clicking send
+  send_post_per_image: 200        # Per-image additional wait AFTER send
+  overlay_dismiss: 200   # After closing a notification or overlay
+  tag_update: 300        # After a tag is applied
+  pagination: 350        # After navigating to next page
+  filter_search: 400     # After typing in campaign filter (wait for results)
+  filter_apply: 800      # After clicking Apply filter
+  escape_close: 500      # After pressing Escape to close a panel
+
+# ─── Business messages ───────────────────────────────────────────────────────
 messages:
   ask_address: "Chị/anh cho shop xin địa chỉ nhận hàng giúp em nhé."
+
+  # MESS 1: ask for address (no-address orders). {name} = customer name.
+  ask_address_templates:
+    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
+    - "Dạ chị ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
+    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
+
+  # MESS 2: deposit request. {name} = customer name.
+  deposit_template: "Dạ chị {name} !\n1/ Đơn 4 bộ cọc 100, 8 bộ cọc 200,.. ( thêm +4 bộ cọc 100 )\n2/ Hủy đơn đặt lại có cọc 100 ạ! ( Đơn xã, không nhận hàng,...)\n----\nNGUYEN THI NGOC NHUNG\nACB\n19337611"
+
+  # MESS 3: FB comment reply templates. {name} = customer name.
+  comment_fallback_templates:
+    - "Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị không được ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Shop gửi tin nhắn cho chị chưa thấy phản hồi ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Tin nhắn bên shop chưa gửi được cho chị ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Bên shop nhắn chị chưa được nên nhờ chị phản hồi giúp ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Shop liên hệ tin nhắn với chị chưa được ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Bên shop gửi tin nhắn cho chị chưa thấy hiển thị ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị nhưng hệ thống chưa gửi được ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Tin nhắn shop gửi chị chưa tới được ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Shop liên hệ chị qua tin nhắn chưa được ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị nhưng chưa thấy nhận được phản hồi ạ."
 
 keywords:
   pickup:

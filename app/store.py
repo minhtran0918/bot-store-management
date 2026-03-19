@@ -104,6 +104,7 @@ def save_filtered_orders(
         "Note",
         "Match_Product",
         "Decision",
+        "Comment",
     ]
 
     temp_path = path.with_suffix(f"{path.suffix}.tmp")
@@ -115,8 +116,5 @@ def save_filtered_orders(
             writer.writerow({k: str(row.get(k, "")).strip() for k in headers})
 
     temp_path.replace(path)
-
-    # Re-open once after write to ensure file is immediately readable on disk.
-    path.read_text(encoding="utf-8-sig")
 
     return path

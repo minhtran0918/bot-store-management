@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from app.bot_config import BotConfig
 from app.order_page import OrderPage
 from app.store import save_filtered_orders
 
 
 LogActionFn = Callable[[str, str, str, str], None]
 LogConsoleFn = Callable[[str], None]
-TEST_MAX_COLLECT_RECORDS = 4  # Set to None for full run
 
 
 def run_collect_order_flow(
@@ -19,21 +19,23 @@ def run_collect_order_flow(
     log_action: LogActionFn,
     csv_output_path: Path | None = None,
     data_dir: Path | None = None,
+    bot_config: BotConfig | None = None,
 ) -> tuple[list[dict[str, str]], Path | None]:
     try:
-        # Pass 1: Tag all orders as NEW (paginate through all pages)
-        log_console(f"PASS 1: Tagging orders as NEW... (cap={TEST_MAX_COLLECT_RECORDS or 'unlimited'})")
-        exported_orders = order_page.read_filtered_orders(max_records=TEST_MAX_COLLECT_RECORDS)
-        log_console(f"PASS 1: done, total collected={len(exported_orders)}")
+        max_records = bot_config.test_max_collect_records if bot_config else None
+        # Collect qualifying orders (no tag / 1.2 / 2.2 + Nháp + Bình thường)
+        log_console(f"Collecting qualifying orders... (cap={max_records or 'unlimited'})")
+        exported_orders = order_page.read_filtered_orders(max_records=max_records)
+        log_console(f"Collected {len(exported_orders)} qualifying orders")
 
         if exported_orders:
-            # Go back to page 1 before processing
-            log_console("PASS 2: Go to page 1, start processing NEW orders...")
+            # Go back to page 1 before enriching
+            log_console("Go to page 1, start enriching orders...")
             order_page.go_to_first_page()
 
-            processed, stock_issue_count, error_count = order_page.enrich_collected_rows(exported_orders, data_dir=data_dir)
+            processed, action_count, error_count = order_page.enrich_collected_rows(exported_orders, data_dir=data_dir, campaign_label=campaign_label)
             log_console(
-                f"PASS 2: done | processed={processed} stock_issue={stock_issue_count} "
+                f"Enrich done | processed={processed} actioned={action_count} "
                 f"error={error_count} total={len(exported_orders)}"
             )
 
@@ -49,5 +51,4 @@ def run_collect_order_flow(
         log_console(f"CSV collect failed: {exc}")
         log_action("system", "export_orders", "error", f"export failed: {exc}")
         raise
-
 

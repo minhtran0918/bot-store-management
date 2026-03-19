@@ -5,18 +5,18 @@ from pathlib import Path
 
 from app.cli_menu import select, text_input, show_summary
 
-FEATURE_COLLECT_ORDER = "collect_order"
 FEATURE_CONFIRM_ORDER = "confirm_order"
+FEATURE_ADD_PRODUCT = "add_product_to_order"
 
 TOTAL_STEPS = 3
 
 
 def prompt_feature_run() -> str:
     choices = [
-        {"name": "collect_order  — collect & tag orders", "value": FEATURE_COLLECT_ORDER},
-        {"name": "confirm_order  — confirm from CSV", "value": FEATURE_CONFIRM_ORDER},
+        {"name": "confirm_order        — xác nhận đơn hàng (check sản phẩm/địa chỉ, gửi tin nhắn ảnh & bill cho khách)", "value": FEATURE_CONFIRM_ORDER},
+        {"name": "add_product_to_order — thêm sản phẩm vào đơn hàng (thêm sản phẩm & chỉnh giá từ file csv)", "value": FEATURE_ADD_PRODUCT},
     ]
-    return select("Select Feature", choices, step=1, total=TOTAL_STEPS, default=FEATURE_COLLECT_ORDER)
+    return select("Select Feature", choices, step=1, total=TOTAL_STEPS, default=FEATURE_CONFIRM_ORDER)
 
 
 def resolve_campaign_date(raw_input: str, fallback_year: int, now_date: date | None = None) -> str:

@@ -1,0 +1,50 @@
+* Điều kiện lọc đơn để chạy tool: nhãn trống HOẶC nhãn '1.2'/'2.2', đơn Nháp, khách Bình thường
+
+Flow:
+  1. Duyệt từng trang, tìm order thỏa điều kiện (nhãn trống / 1.2 / 2.2 + trạng thái Nháp + khách Bình thường)
+  2. Mở modal edit, kiểm tra địa chỉ & product match
+  3. Gắn tag theo 6 case bên dưới
+  4. Gửi tin nhắn (trừ case 1.2 & 2.2 → chỉ gắn tag, ko làm gì thêm)
+  5. Reply comment cho case 1.1, 2, 2.1 (LUÔN reply, ko check fallback) → nếu fail thì log, CSV cột Comment = ok/send_fail
+
+TAG / Status (6 cases):
+  Có địa chỉ:
+    260303993 - dưới 3 sản phẩm matched:    TAG = '1'    (status: HAVE_ADDR_LOW_SP)     → IMAGE_PRODUCT, gui anh PBH
+    260303990 - 4+ sản phẩm matched:         TAG = '1.1'  (status: HAVE_ADDR_HIGH_SP)    → IMAGE_PRODUCT, MESS 2, MESS 3
+    260303989 (bị skip) - 0 matched product:           TAG = '1.2'  (status: HAVE_ADDR_NO_SP)      → chỉ gắn tag, user tự xử lý
+
+  Không có địa chỉ:
+    260303994 - dưới 3 sản phẩm matched:    TAG = '2'    (status: NO_ADDR_LOW_SP)       → IMAGE_PRODUCT, MESS 1, MESS 3
+    260303992 - 4+ sản phẩm matched:         TAG = '2.1'  (status: NO_ADDR_HIGH_SP)      → IMAGE_PRODUCT, MESS 1, MESS 2, MESS 3
+    260303991 - 0 matched product:           TAG = '2.2'  (status: NO_ADDR_NO_SP)        → chỉ gắn tag, user tự xử lý
+
+Case 1.2 & 2.2:
+  - Chỉ gắn tag, KHÔNG gửi tin nhắn hay làm gì thêm
+  - Khi chạy lại tool, order có tag 1.2/2.2 sẽ được pick lên check lại
+  - Nếu lần chạy lại vẫn 0 matched → giữ nguyên tag (1.2 / 2.2)
+  - Nếu lần chạy lại có matched → đổi tag sang case phù hợp (1, 1.1, 2, 2.1)
+
+Thứ tự gửi: ảnh trước → text sau (ưu tiên chọn ảnh trước)
+  - Chỉ case 1.2 & 2.2 ko gửi ảnh/tin nhắn
+
+NỘI DUNG GỬI TIN:
+  MESS 1 >> xin địa chỉ (_NO_ADDR_TEMPLATES random) → case 2, 2.1
+  MESS 2 >> hỏi cọc (_DEPOSIT_TEMPLATE) → case 1.1, 2.1
+  MESS 3 >> reply comment (_COMMENT_FALLBACK_TEMPLATES random, LUÔN reply ko check fallback) → case 1.1, 2, 2.1
+
+MESS 1 mẫu:
+  Dạ chị {name}! Số lượng đơn chốt đủ bộ
+  Chị "GỬI ĐỊA CHỈ" shop đi đơn ạ !
+  Chị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !
+
+MESS 2 mẫu:
+  Dạ chị {name} !
+  1/ Đơn 4 bộ cọc 100, 8 bộ cọc 200,.. ( thêm +4 bộ cọc 100 )
+  2/ Hủy đơn đặt lại có cọc 100 ạ! ( Đơn xã, không nhận hàng,...)
+  ----
+  NGUYEN THI NGOC NHUNG
+  ACB
+  19337611
+
+CSV cột Comment: ok / send_fail (theo kết quả MESS 3)
+Test cap: 6 record đầu tiên (bao gồm cả row bị skip, log lý do skip)
