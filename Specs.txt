@@ -9,13 +9,13 @@ Flow:
 
 TAG / Status (6 cases):
   Có địa chỉ:
-    260303993 - dưới 3 sản phẩm matched:    TAG = '1'    (status: HAVE_ADDR_LOW_SP)     → IMAGE_PRODUCT, gui anh PBH
-    260303990 - 4+ sản phẩm matched:         TAG = '1.1'  (status: HAVE_ADDR_HIGH_SP)    → IMAGE_PRODUCT, MESS 2, MESS 3
+    260303993 - dưới 3 sản phẩm matched:    TAG = '1'    (status: HAVE_ADDR_LOW_SP)     → IMAGE_PRODUCT, IMAGE_ORDER_FINAL
+    260303990 - 4+ sản phẩm matched:         TAG = '1.1'  (status: HAVE_ADDR_HIGH_SP)    → IMAGE_PRODUCT, MESS_COC_TIEN, MESS_FB
     260303989 (bị skip) - 0 matched product:           TAG = '1.2'  (status: HAVE_ADDR_NO_SP)      → chỉ gắn tag, user tự xử lý
 
   Không có địa chỉ:
-    260303994 - dưới 3 sản phẩm matched:    TAG = '2'    (status: NO_ADDR_LOW_SP)       → IMAGE_PRODUCT, MESS 1, MESS 3
-    260303992 - 4+ sản phẩm matched:         TAG = '2.1'  (status: NO_ADDR_HIGH_SP)      → IMAGE_PRODUCT, MESS 1, MESS 2, MESS 3
+    260303994 - dưới 3 sản phẩm matched:    TAG = '2'    (status: NO_ADDR_LOW_SP)       → IMAGE_PRODUCT, MESS_DIA_CHI, MESS_FB
+    260303992 - 4+ sản phẩm matched:         TAG = '2.1'  (status: NO_ADDR_HIGH_SP)      → IMAGE_PRODUCT, MESS_DIA_CHI, MESS_COC_TIEN, MESS_FB
     260303991 - 0 matched product:           TAG = '2.2'  (status: NO_ADDR_NO_SP)        → chỉ gắn tag, user tự xử lý
 
 Case 1.2 & 2.2:
@@ -28,16 +28,16 @@ Thứ tự gửi: ảnh trước → text sau (ưu tiên chọn ảnh trước)
   - Chỉ case 1.2 & 2.2 ko gửi ảnh/tin nhắn
 
 NỘI DUNG GỬI TIN:
-  MESS 1 >> xin địa chỉ (_NO_ADDR_TEMPLATES random) → case 2, 2.1
-  MESS 2 >> hỏi cọc (_DEPOSIT_TEMPLATE) → case 1.1, 2.1
-  MESS 3 >> reply comment (_COMMENT_FALLBACK_TEMPLATES random, LUÔN reply ko check fallback) → case 1.1, 2, 2.1
+  MESS_DIA_CHI >> xin địa chỉ (_NO_ADDR_TEMPLATES random) → case 2, 2.1
+  MESS_COC_TIEN >> hỏi cọc (_DEPOSIT_TEMPLATE) → case 1.1, 2.1
+  MESS_FB >> reply comment (_COMMENT_FALLBACK_TEMPLATES random, LUÔN reply ko check fallback) → case 1.1, 2, 2.1
 
-MESS 1 mẫu:
+MESS_DIA_CHI mẫu:
   Dạ chị {name}! Số lượng đơn chốt đủ bộ
   Chị "GỬI ĐỊA CHỈ" shop đi đơn ạ !
   Chị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !
 
-MESS 2 mẫu:
+MESS_COC_TIEN mẫu:
   Dạ chị {name} !
   1/ Đơn 4 bộ cọc 100, 8 bộ cọc 200,.. ( thêm +4 bộ cọc 100 )
   2/ Hủy đơn đặt lại có cọc 100 ạ! ( Đơn xã, không nhận hàng,...)
@@ -46,5 +46,5 @@ MESS 2 mẫu:
   ACB
   19337611
 
-CSV cột Comment: ok / send_fail (theo kết quả MESS 3)
+CSV cột Comment: ok / send_fail (theo kết quả MESS_FB)
 Test cap: 6 record đầu tiên (bao gồm cả row bị skip, log lý do skip)

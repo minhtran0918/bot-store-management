@@ -4,22 +4,21 @@ headless: false
 
 # ─── Bot runtime settings ────────────────────────────────────────────────────
 bot:
-  test_max_collect_records: 3   # Limit rows per run (for testing). Set to null for full run.
+  test_max_collect_records: 6   # Limit rows per run (for testing). Set to null for full run.
   max_images_per_send: 3        # Max images per message send (larger sets are split into batches).
 
 # ─── Feature flags ───────────────────────────────────────────────────────────
 features:
-  enable_comment_reply: false   # MESS 3: reply to FB comment. Disable when buggy.
+  enable_comment_reply: true    # MESS 3: reply to FB comment. Disable when buggy.
 
 # ─── Playwright timing (milliseconds) ────────────────────────────────────────
 timeouts:
   click: 3000            # General element click
   click_slow: 5000       # Slow elements: filter panel, Apply button
   modal: 6000            # Wait for order edit modal to appear
-  panel_open: 800        # After opening the message panel
+  panel_open: 500        # After opening the message panel
   text_fill: 300         # After filling a textarea
   image_attach: 500      # After file chooser sets image files
-  image_pre_send_per_image: 200   # Per-image wait BEFORE clicking send
   send_post_base: 1000            # Base wait AFTER clicking send
   send_post_per_image: 200        # Per-image additional wait AFTER send
   overlay_dismiss: 200   # After closing a notification or overlay
@@ -28,6 +27,16 @@ timeouts:
   filter_search: 400     # After typing in campaign filter (wait for results)
   filter_apply: 800      # After clicking Apply filter
   escape_close: 500      # After pressing Escape to close a panel
+  table_load: 5000       # Wait for order table rows to appear after navigation
+  spinner_hide: 3000     # Wait for upload spinner to disappear
+  error_recheck: 1500    # Wait before rechecking if send error is transient
+  comment_reply_post: 2000  # Wait after sending a comment reply
+  notification_click: 500   # Click timeout for notification close buttons
+  inner_text_read: 2000  # Timeout for reading element inner text
+  tag_clear: 150         # Wait after clearing tags via JS
+  tag_backspace: 100     # Wait after backspace clearing tags
+  bill_create_step: 1000 # Wait between steps when creating sales bill (Lưu nháp)
+  bill_image_load: 2000  # Wait for bill image to load into message box
 
 # ─── Business messages ───────────────────────────────────────────────────────
 messages:

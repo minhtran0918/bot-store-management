@@ -63,9 +63,12 @@ class BotConfig:
     # Required timeout keys — must all be present in config.yaml timeouts section
     _REQUIRED_TIMEOUTS = [
         "click", "click_slow", "modal", "panel_open", "text_fill",
-        "image_attach", "image_pre_send_per_image", "send_post_base",
+        "image_attach", "send_post_base",
         "send_post_per_image", "overlay_dismiss", "tag_update",
         "pagination", "filter_search", "filter_apply", "escape_close",
+        "table_load", "spinner_hide", "error_recheck", "comment_reply_post",
+        "notification_click", "inner_text_read", "tag_clear", "tag_backspace",
+        "bill_create_step", "bill_image_load",
     ]
 
     def _validate_timeouts(self) -> None:
@@ -153,11 +156,6 @@ class BotConfig:
         return self._t("image_attach")
 
     @property
-    def image_pre_send_per_image_ms(self) -> int:
-        """Additional ms per image to wait BEFORE clicking send (upload stabilisation)."""
-        return self._t("image_pre_send_per_image")
-
-    @property
     def send_post_base_ms(self) -> int:
         """Base wait after clicking the send button."""
         return self._t("send_post_base")
@@ -196,6 +194,56 @@ class BotConfig:
     def escape_close_ms(self) -> int:
         """Wait after pressing Escape to close a panel."""
         return self._t("escape_close")
+
+    @property
+    def table_load_ms(self) -> int:
+        """Wait for order table rows to appear after navigation."""
+        return self._t("table_load")
+
+    @property
+    def spinner_hide_ms(self) -> int:
+        """Wait for upload spinner to disappear."""
+        return self._t("spinner_hide")
+
+    @property
+    def error_recheck_ms(self) -> int:
+        """Wait before rechecking if a send error is transient."""
+        return self._t("error_recheck")
+
+    @property
+    def comment_reply_post_ms(self) -> int:
+        """Wait after sending a comment reply."""
+        return self._t("comment_reply_post")
+
+    @property
+    def notification_click_ms(self) -> int:
+        """Click timeout for notification close buttons."""
+        return self._t("notification_click")
+
+    @property
+    def inner_text_read_ms(self) -> int:
+        """Timeout for reading element inner text."""
+        return self._t("inner_text_read")
+
+    @property
+    def tag_clear_ms(self) -> int:
+        """Wait after clearing tags via JS."""
+        return self._t("tag_clear")
+
+    @property
+    def tag_backspace_ms(self) -> int:
+        """Wait after backspace clearing tags."""
+        return self._t("tag_backspace")
+
+    @property
+    def bill_create_step_ms(self) -> int:
+        """Wait between steps when creating sales bill."""
+        return self._t("bill_create_step")
+
+    @property
+    def bill_image_load_ms(self) -> int:
+        """Wait for bill image to load into message box."""
+        return self._t("bill_image_load")
 
     # ------------------------------------------------------------------
     # Message templates

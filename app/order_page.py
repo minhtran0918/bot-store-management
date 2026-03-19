@@ -121,7 +121,7 @@ class OrderPage:
             ).first
             if header.count() == 0:
                 _log(f"  [!] Modal header not found, cannot verify order code")
-                return True  # proceed anyway
+                return False
             modal_code = header.inner_text().strip()
             if modal_code == expected_code:
                 return True
@@ -129,7 +129,7 @@ class OrderPage:
             return False
         except Exception as exc:
             _log(f"  [!] Modal verify error: {exc}")
-            return True  # proceed anyway on error
+            return False
 
     def address_input(self) -> Locator:
         return self._first([
@@ -200,6 +200,8 @@ class OrderPage:
             ])
             # Scroll into view in case the toolbar is off-screen due to window resize
             image_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+            # Small delay before clicking image button to let panel fully settle
+            self.page.wait_for_timeout(1000)
             with self.page.expect_file_chooser() as fc_info:
                 image_btn.click(timeout=self._cfg.click_timeout)
             file_chooser = fc_info.value
@@ -216,7 +218,7 @@ class OrderPage:
         """Wait for message panel to finish loading (spinner gone), then focus textarea."""
         self.page.wait_for_timeout(self._cfg.panel_open_ms)
         try:
-            self.page.wait_for_selector("tds-spin", state="hidden", timeout=10000)
+            self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
         except Exception:
             pass
         self.message_box().click(timeout=self._cfg.click_timeout)
@@ -248,7 +250,7 @@ class OrderPage:
             # Wait for the upload spinner to disappear before sending
             try:
                 self.page.wait_for_selector(
-                    "tds-spin", state="hidden", timeout=10000
+                    "tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms
                 )
             except Exception:
                 pass  # spinner may already be gone
@@ -533,7 +535,7 @@ class OrderPage:
             cur_w, cur_h = orig_w, orig_h
             cur_img = img
             for _ in range(10):
-                current_size = buf.tell()
+                current_size = len(buf.getvalue())
                 ratio = ((max_kb * 1024) / current_size) ** 0.5 * 0.85
                 ratio = min(ratio, 0.8)
                 cur_w = max(1, int(cur_w * ratio))
@@ -597,7 +599,7 @@ class OrderPage:
             count = close_buttons.count()
             for i in range(count):
                 try:
-                    close_buttons.nth(i).click(timeout=500, force=True)
+                    close_buttons.nth(i).click(timeout=self._cfg.notification_click_ms, force=True)
                 except Exception:
                     pass
             if count > 0:
@@ -674,12 +676,121 @@ class OrderPage:
 
     def _close_edit_modal_safely(self) -> None:
         try:
-            self.close_button().click(timeout=3000)
+            self.close_button().click(timeout=self._cfg.click_timeout)
         except Exception:
             try:
                 self.page.keyboard.press("Escape")
             except Exception:
                 pass
+
+    def _create_order_bill(self, order_code: str) -> bool:
+        """Create sales bill (phiếu bán hàng) in the edit modal for TAG_1 orders.
+
+        Steps: tick checkbox → Lưu nháp → wait → Lưu nháp again → status becomes 'Đơn hàng'.
+        Must be called while the edit modal is open.
+        """
+        try:
+            step_ms = self._cfg.bill_create_step_ms
+
+            # Tick the "Tạo phiếu bán hàng" checkbox (click the visible label, not the hidden input)
+            checkbox_label = self.page.locator("label.tds-checkbox-wrapper:has(span.tds-checkbox-label:has-text('Tạo phiếu bán hàng'))").first
+            if checkbox_label.count() == 0:
+                _log(f"  [!] BILL: checkbox not found for {order_code}")
+                return False
+            checkbox_label.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(step_ms)
+
+            # Wait for "Lưu nháp" button to appear (shows ~1s after checkbox tick)
+            btn_selector = "button.tds-button-primary:has-text('Lưu nháp')"
+            try:
+                self.page.wait_for_selector(btn_selector, state="visible", timeout=self._cfg.click_timeout)
+            except Exception:
+                _log(f"  [!] BILL: 'Lưu nháp' button not found for {order_code}")
+                return False
+
+            # Click "Lưu nháp" (first time)
+            self.page.locator(btn_selector).first.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(step_ms)
+
+            # Click "Lưu nháp" (second time — after notifications)
+            save_draft_btn2 = self.page.locator(btn_selector).first
+            if save_draft_btn2.count() > 0:
+                save_draft_btn2.click(timeout=self._cfg.click_timeout)
+                self.page.wait_for_timeout(step_ms)
+
+            # After 2nd click, page returns to order list — wait for it to settle
+            self.page.wait_for_timeout(step_ms)
+
+            # Verify status changed to "Đơn hàng" (visible on the order list row)
+            status_tag = self.page.locator("tds-tag:has-text('Đơn hàng')").first
+            if status_tag.count() > 0:
+                _log(f"  BILL: create_order_bill ok for {order_code}")
+                return True
+            else:
+                _log(f"  [!] BILL: status did not change to 'Đơn hàng' for {order_code}")
+                return False
+        except Exception as exc:
+            _log(f"  [!] BILL: create failed for {order_code}: {exc}")
+            return False
+
+    def _send_bill_image_in_panel(self, order_code: str) -> bool:
+        """Send bill image within the open message panel.
+
+        Steps: click 'Phiếu bán hàng' → first item three-dots → 'Gửi ảnh phiếu bán hàng'
+        → wait for image to load → send.
+        """
+        try:
+            # Click "Phiếu bán hàng" button (file icon)
+            bill_btn = self.page.locator(
+                "button[tooltiptitle='Phiếu bán hàng'], "
+                "button:has(i.tdsi-file-line)"
+            ).first
+            if bill_btn.count() == 0:
+                _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
+                return False
+            bill_btn.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+
+            # Click three-dots button (span with tdsi-three-dots-horizon-fill icon)
+            three_dots_btn = self.page.locator(
+                "span.flex.items-center:has(i.tdsi-three-dots-horizon-fill)"
+            ).first
+            if three_dots_btn.count() == 0:
+                _log(f"  [!] BILL IMG: three-dots button not found for {order_code}")
+                return False
+            three_dots_btn.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+
+            # Click "Gửi ảnh phiếu bán hàng" from popup
+            send_bill_img_btn = self.page.locator(
+                "span:has(i.tdsi-images-fill):has-text('Gửi ảnh phiếu bán hàng')"
+            ).first
+            if send_bill_img_btn.count() == 0:
+                # Fallback: text-based match
+                send_bill_img_btn = self.page.locator("text=Gửi ảnh phiếu bán hàng").first
+            if send_bill_img_btn.count() == 0:
+                _log(f"  [!] BILL IMG: 'Gửi ảnh phiếu bán hàng' not found for {order_code}")
+                return False
+            send_bill_img_btn.click(timeout=self._cfg.click_timeout)
+
+            # Wait for the bill list modal to disappear (returns to message panel)
+            try:
+                self.page.wait_for_selector(
+                    "app-modal-list-bill", state="hidden", timeout=self._cfg.spinner_hide_ms
+                )
+            except Exception:
+                pass  # modal may already be gone
+            self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+            # Send the message with bill image
+            self.send_message_button().click(timeout=self._cfg.click_timeout, force=True)
+            self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+            _log(f"  BILL IMG: sent for {order_code}")
+            return True
+        except Exception as exc:
+            _log(f"  [!] BILL IMG: send failed for {order_code}: {exc}")
+            return False
 
     def _read_partner_name(self) -> str:
         """Read partner name from the chat/message panel label."""
@@ -689,7 +800,7 @@ class OrderPage:
                 "label.text-black.font-semibold.text-caption-1"
             ).first
             if label.count() > 0:
-                return label.inner_text(timeout=2000).strip()
+                return label.inner_text(timeout=self._cfg.inner_text_read_ms).strip()
         except Exception:
             pass
         return ""
@@ -722,7 +833,7 @@ class OrderPage:
                 return False
             # Transient error class may appear while message is still being sent.
             # Wait a moment and re-check — if the count drops back, it was not a real error.
-            self.page.wait_for_timeout(1500)
+            self.page.wait_for_timeout(self._cfg.error_recheck_ms)
             errors_recheck = self._count_send_errors()
             if errors_before >= 0 and errors_recheck <= errors_before:
                 return False
@@ -732,7 +843,7 @@ class OrderPage:
                 "div.message-inner.error, div.message-inner-medium.error"
             ).last
             try:
-                _log(f"  [!] Error element HTML: {error_msg.inner_html(timeout=2000)[:300]}")
+                _log(f"  [!] Error element HTML: {error_msg.inner_html(timeout=self._cfg.inner_text_read_ms)[:300]}")
             except Exception:
                 pass
             return True
@@ -920,7 +1031,7 @@ class OrderPage:
                 try:
                     self._dismiss_notifications()
                     self.open_edit_modal_by_row(row)
-                    self.wait_modal(timeout=6000)
+                    self.wait_modal()
 
                     if not self._verify_modal_order_code(order_code):
                         self._close_edit_modal_safely()
@@ -956,6 +1067,11 @@ class OrderPage:
                     row_data["Tag"] = resolved_tag
                     row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
 
+                    # TAG 1: create sales bill (phiếu bán hàng) while modal is open
+                    bill_created = False
+                    if resolved_tag == TAG_1:
+                        bill_created = self._create_order_bill(order_code)
+
                     self._close_edit_modal_safely()
                     self._dismiss_notifications()
 
@@ -974,7 +1090,7 @@ class OrderPage:
 
                     # Step 4: Send images + messages per tag
                     # 1.2/2.2 → skip (manual review, tag only)
-                    # TAG 1   → images only
+                    # TAG 1   → images + bill image (if bill created)
                     # TAG 1.1 → images, MESS 2 (deposit), MESS 3 (comment reply)
                     # TAG 2   → images + MESS 1 (ask address), MESS 3 (comment reply)
                     # TAG 2.1 → images + MESS 1, MESS 2, MESS 3 (comment reply)
@@ -1004,26 +1120,35 @@ class OrderPage:
                                 msg_text, saved_images or [], order_code
                             )
 
+                            # TAG 1: send bill image after product images
+                            if resolved_tag == TAG_1 and bill_created:
+                                self._send_bill_image_in_panel(order_code)
+                                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
                             # MESS 2: deposit message (cases 1.1, 2.1) — sent in same panel
                             if resolved_tag in (TAG_1_1, TAG_2_1):
                                 deposit_msg = self._build_deposit_message(partner_name)
                                 self._send_in_panel(deposit_msg, None, order_code)
 
+                            # MESS 3: reply comment (cases 1.1, 2, 2.1) — done in same open panel
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_2, TAG_2_1):
+                                try:
+                                    comment_ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
+                                    row_data["Comment"] = "ok" if comment_ok else "send_fail"
+                                    if comment_ok:
+                                        _log(f"  COMMENT REPLY OK: order={order_code}")
+                                    else:
+                                        _log(f"  [!] COMMENT REPLY FAILED: order={order_code}")
+                                except Exception as exc:
+                                    row_data["Comment"] = "send_fail"
+                                    _log(f"  [!] Comment reply error: {exc}")
+                                # Wait 2s after comment reply before closing panel
+                                self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
+
                             self.page.keyboard.press("Escape")
                             self.page.wait_for_timeout(self._cfg.escape_close_ms)
                         else:
                             _log(f"  [!] Row not found for sending: {order_code}")
-
-                        # MESS 3: reply comment (cases 1.1, 2, 2.1) — controlled by features.enable_comment_reply
-                        if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_2, TAG_2_1):
-                            self._dismiss_notifications()
-                            comment_row = self.row_by_code(order_code)
-                            if comment_row.count() > 0:
-                                comment_ok = self.reply_comment_to_order(comment_row, order_code, campaign_label=campaign_label)
-                                row_data["Comment"] = "ok" if comment_ok else "send_fail"
-                            else:
-                                row_data["Comment"] = "send_fail"
-                                _log(f"  [!] COMMENT: row not found for {order_code}")
 
                     order_elapsed = time.time() - order_start
                     _log(f"  DONE ORDER = {order_code} | STT = {processed}/{total} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
@@ -1120,14 +1245,14 @@ class OrderPage:
                 }
             """)
             if cleared:
-                self.page.wait_for_timeout(150)
+                self.page.wait_for_timeout(self._cfg.tag_clear_ms)
 
             # Fallback: batch backspaces without checking tags each time
             tag_count = len(current_tags)
             if tag_count > 0:
                 for _ in range(tag_count * 3):
                     tag_input.press("Backspace")
-                self.page.wait_for_timeout(100)
+                self.page.wait_for_timeout(self._cfg.tag_backspace_ms)
 
             # Add the target tag
             tag_input.fill(target_tag)
