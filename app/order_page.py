@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import math
 import random
+import shutil
 import time
 import traceback
 import unicodedata
@@ -559,6 +560,9 @@ class OrderPage:
 
     def save_product_images(self, order_code: str, data_dir: Path, note_prices: list[int] | None = None) -> list[Path]:
         product_dir = data_dir / "product" / order_code
+        if product_dir.exists():
+            shutil.rmtree(product_dir)
+            _log(f"  CLEAN IMAGE: removed old images for {order_code}")
         product_dir.mkdir(parents=True, exist_ok=True)
 
         items = self._extract_product_image_items_from_modal()
