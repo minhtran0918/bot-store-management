@@ -13,7 +13,7 @@ from app.cli_helpers import (
     FEATURE_CONFIRM_ORDER,
     FEATURE_ADD_PRODUCT,
     prompt_campaign_label,
-    prompt_csv_output_path,
+    prompt_price_code_mapping,
     prompt_existing_csv_required,
     prompt_feature_run,
 )
@@ -62,9 +62,10 @@ def main():
     csv_output_path: Path | None = None
     confirm_input_csv_path: Path | None = None
     confirm_order_codes: list[str] = []
+    price_code_mapping: dict[str, int | None] = {}
 
     if feature_run == FEATURE_CONFIRM_ORDER:
-        csv_output_path = prompt_csv_output_path(DATA_DIR)
+        price_code_mapping = prompt_price_code_mapping()
     elif feature_run == FEATURE_ADD_PRODUCT:
         confirm_input_csv_path = prompt_existing_csv_required(DATA_DIR)
         if confirm_input_csv_path is None:
@@ -79,8 +80,6 @@ def main():
             print(f"CSV input has no valid order codes: {confirm_input_csv_path}")
             return
 
-    csv_mode = "reuse_existing" if csv_output_path else "create_new"
-
     try:
         config = load_config(BASE_DIR / "config.yaml")
     except Exception as exc:
@@ -89,14 +88,16 @@ def main():
 
     log_exception_trace = build_exception_logger(ERROR_DIR, ERROR_LOG_FILE, log_console)
 
-    selected_csv_text = str(csv_output_path.resolve()) if csv_output_path else "(auto new file)"
     confirm_count_text = str(len(confirm_order_codes)) if feature_run == FEATURE_ADD_PRODUCT else "n/a"
+    active_codes = {k: v for k, v in price_code_mapping.items() if v is not None}
+    price_map_text = ", ".join(f"{k}={v}" for k, v in active_codes.items()) if active_codes else "(none)"
 
     summary_items = [
         ("Feature", feature_run),
         ("Campaign", campaign_label),
-        ("CSV", selected_csv_text),
     ]
+    if feature_run == FEATURE_CONFIRM_ORDER:
+        summary_items.append(("Price Codes", price_map_text))
     if feature_run == FEATURE_ADD_PRODUCT:
         summary_items.append(("Orders", confirm_count_text))
     show_summary(summary_items)
@@ -104,7 +105,7 @@ def main():
     log_console("=" * 80)
     log_console(
         f"[CLI] Selected options | feature={feature_run} | campaign='{campaign_label}' "
-        f"| csv_mode={csv_mode} | csv_path={selected_csv_text} | confirm_orders={confirm_count_text}"
+        f"| price_codes={price_map_text} | confirm_orders={confirm_count_text}"
     )
     log_console("[START] Begin automation process")
 
@@ -157,6 +158,7 @@ def main():
                     csv_output_path=csv_output_path,
                     data_dir=DATA_DIR,
                     bot_config=bot_config,
+                    price_code_mapping=price_code_mapping,
                 )
 
             if feature_run == FEATURE_ADD_PRODUCT:

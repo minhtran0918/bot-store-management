@@ -94,31 +94,25 @@ def _list_existing_order_csv_files(data_dir: Path) -> list[Path]:
     return files
 
 
-def prompt_csv_output_path(data_dir: Path) -> Path | None:
-    choices = [
-        {"name": "create new CSV    — auto generate file", "value": "new"},
-        {"name": "reuse existing CSV — pick from data/", "value": "reuse"},
-    ]
-    selected = select("Select CSV Output", choices, step=3, total=TOTAL_STEPS, default="new")
-
-    if selected != "reuse":
-        return None
-
-    return _prompt_select_csv_file(data_dir)
+PRICE_CODE_KEYS = [f"A{i}" for i in range(1, 10)]  # A1..A9
 
 
-def _prompt_select_csv_file(data_dir: Path) -> Path | None:
-    csv_files = _list_existing_order_csv_files(data_dir)
-    if not csv_files:
-        return None
+def prompt_price_code_mapping() -> dict[str, int | None]:
+    """Step 3/3: prompt user to input price values for A1-A9 codes.
 
-    choices = []
-    for path in csv_files:
-        modified_at = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-        choices.append({"name": f"{path.name}  ({modified_at})", "value": str(path)})
-
-    selected = select("Select CSV File", choices, step=3, total=TOTAL_STEPS)
-    return Path(selected)
+    Enter = null (skip). These map product alias codes in notes to actual prices.
+    """
+    mapping: dict[str, int | None] = {}
+    for key in PRICE_CODE_KEYS:
+        raw = text_input(f"{key} price (enter=skip)", step=3, total=TOTAL_STEPS)
+        if raw:
+            try:
+                mapping[key] = int(raw)
+            except ValueError:
+                mapping[key] = None
+        else:
+            mapping[key] = None
+    return mapping
 
 
 def prompt_existing_csv_required(data_dir: Path) -> Path | None:

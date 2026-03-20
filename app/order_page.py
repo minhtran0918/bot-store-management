@@ -14,17 +14,21 @@ from PIL import Image
 import re
 
 from .constants import (
-    ERR, RECHECK_TAGS, STATUS_TO_TAG,
-    TAG_1, TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2,
+    ERR, TAG_ONLY_TAGS, STATUS_TO_TAG,
+    TAG_1, TAG_1_1, TAG_1_2, TAG_1_3, TAG_1_4,
+    TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4,
     HAVE_ADDR_LOW_SP, HAVE_ADDR_HIGH_SP, HAVE_ADDR_NO_SP,
+    HAVE_ADDR_NO_PROD, HAVE_ADDR_OOS,
     NO_ADDR_LOW_SP, NO_ADDR_HIGH_SP, NO_ADDR_NO_SP,
+    NO_ADDR_NO_PROD, NO_ADDR_OOS,
 )
 from .bot_config import BotConfig
+from .note_parser import extract_note_prices
 
 
 def _log(message: str) -> None:
     ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] {message}")
+    print(f"[{ts}] {message}", flush=True)
 
 
 _STROKE_MAP = str.maketrans({"Đ": "D", "đ": "d"})
@@ -237,6 +241,51 @@ class OrderPage:
         else:
             self._send_in_panel(message, img_list or None, order_code)
 
+    def _has_pending_content_in_panel(self) -> bool:
+        """Check if the message panel has content ready to send (text or images)."""
+        # Check for image attachment indicator: "Ảnh X/30"
+        try:
+            img_indicator = self.page.locator("span:has-text('/30')").first
+            if img_indicator.count() > 0:
+                return True
+        except Exception:
+            pass
+        # Check if textarea has text
+        try:
+            textarea = self.message_box()
+            if textarea.count() > 0:
+                val = textarea.input_value(timeout=1000)
+                if val and val.strip():
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _click_send_button_reliable(self, order_code: str) -> None:
+        """Click the send button with retry logic to avoid miss clicks."""
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                send_btn = self.send_message_button()
+                # Scroll into view and wait for it to be stable
+                send_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+                self.page.wait_for_timeout(200)
+                # Try normal click first (respects actionability), fall back to force
+                try:
+                    send_btn.click(timeout=self._cfg.click_timeout)
+                except Exception:
+                    send_btn.click(timeout=self._cfg.click_timeout, force=True)
+                # Verify content was actually sent (panel should be empty after)
+                self.page.wait_for_timeout(500)
+                if not self._has_pending_content_in_panel():
+                    return  # success — content was sent
+                _log(f"  [!] Send attempt {attempt}/{max_attempts}: content still in panel, retrying...")
+            except Exception as exc:
+                _log(f"  [!] Send attempt {attempt}/{max_attempts} error: {exc}")
+            if attempt < max_attempts:
+                self.page.wait_for_timeout(500)
+        _log(f"  [!] Send button: all {max_attempts} attempts done for {order_code}")
+
     def _send_in_panel(self, message: str, image_paths: list[Path] | None, order_code: str) -> None:
         """Send one message (images + text) within an already-open message panel."""
         img_count = len(image_paths) if image_paths else 0
@@ -255,8 +304,16 @@ class OrderPage:
                 )
             except Exception:
                 pass  # spinner may already be gone
+            # Verify images are attached by checking "Ảnh X/30" indicator
+            try:
+                self.page.wait_for_selector(
+                    "span:has-text('/30')", state="visible", timeout=self._cfg.spinner_hide_ms
+                )
+                _log(f"  IMG READY: images attached, indicator visible")
+            except Exception:
+                _log(f"  [!] IMG indicator '/30' not found, proceeding anyway")
         errors_before = self._count_send_errors()
-        self.send_message_button().click(timeout=self._cfg.click_timeout, force=True)
+        self._click_send_button_reliable(order_code)
         send_delay = self._cfg.send_post_base_ms + self._cfg.send_post_per_image_ms * img_count
         self.page.wait_for_timeout(send_delay)
         if self._check_message_send_error(errors_before):
@@ -445,18 +502,8 @@ class OrderPage:
                 tags.append(tag)
         return tags
 
-    def _extract_price_tokens(self, text: str) -> list[int]:
-        tokens: list[int] = []
-        for match in re.findall(r"\d[\d.,]*", text or ""):
-            digits = re.sub(r"\D", "", match)
-            if not digits:
-                continue
-            value = int(digits)
-            if value >= 1000:
-                value = value // 1000
-            if value > 0:
-                tokens.append(value)
-        return tokens
+    def _extract_price_tokens(self, text: str, price_code_mapping: dict[str, int | None] | None = None) -> list[int]:
+        return extract_note_prices(text, price_code_mapping)
 
     def _extract_product_prices_from_modal(self) -> list[int]:
         prices: list[int] = []
@@ -647,17 +694,53 @@ class OrderPage:
         """)
         return str(value or "").strip()
 
-    def _evaluate_modal_address_and_product(self) -> tuple[bool, int, int, str, list[int]]:
+    def _extract_forecast_stock_from_modal(self) -> list[int]:
+        """Extract 'Tồn dự báo' values for each product in the modal."""
+        forecasts: list[int] = []
+        product_rows = self.page.locator("div.tds-collapse-content-box div.w-full.flex.gap-x-3")
+        for i in range(product_rows.count()):
+            row_text = product_rows.nth(i).inner_text().strip()
+            # Match "Tồn dự báo: <number>" — the number may be negative
+            m = re.search(r"T[oồ]n\s+d[uự]\s+b[aá]o\s*:\s*(-?\d+)", row_text, flags=re.IGNORECASE)
+            if m:
+                forecasts.append(int(m.group(1)))
+            else:
+                # If not found, assume 0 (treat as out of stock)
+                forecasts.append(0)
+        return forecasts
+
+    def _evaluate_modal_address_and_product(
+        self,
+        price_code_mapping: dict[str, int | None] | None = None,
+    ) -> tuple[bool, int, int, str, list[int]]:
         """Returns (have_address, matched_count, total_products, tag, note_prices)."""
         address_text = self._read_modal_address()
         have_address = bool(address_text)
 
         note_text = self._read_modal_note()
-        note_prices = self._extract_price_tokens(note_text)
+        note_prices = self._extract_price_tokens(note_text, price_code_mapping)
         product_prices = self._extract_product_prices_from_modal()
 
         total_products = len(product_prices)
-        matched_count = sum(1 for n, p in zip(note_prices, product_prices) if n == p) if note_prices and product_prices else 0
+
+        # Check: no products in order list at all
+        if total_products == 0:
+            status = HAVE_ADDR_NO_PROD if have_address else NO_ADDR_NO_PROD
+            tag = STATUS_TO_TAG[status]
+            return have_address, 0, total_products, tag, note_prices
+
+        # Check: any product has Tồn dự báo <= 0 (out of stock)
+        forecast_stocks = self._extract_forecast_stock_from_modal()
+        if forecast_stocks and any(f <= 0 for f in forecast_stocks):
+            status = HAVE_ADDR_OOS if have_address else NO_ADDR_OOS
+            tag = STATUS_TO_TAG[status]
+            _log(f"  OOS: forecast_stocks={forecast_stocks}")
+            return have_address, 0, total_products, tag, note_prices
+
+        # Match note prices against product prices (set-based matching)
+        note_price_set = set(note_prices)
+        product_price_set = set(product_prices)
+        matched_count = len(note_price_set & product_price_set) if note_prices and product_prices else 0
 
         # Tag logic — 6 cases
         if have_address:
@@ -787,7 +870,7 @@ class OrderPage:
             self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
             # Send the message with bill image
-            self.send_message_button().click(timeout=self._cfg.click_timeout, force=True)
+            self._click_send_button_reliable(order_code)
             self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
             _log(f"  BILL IMG: sent for {order_code}")
@@ -953,16 +1036,30 @@ class OrderPage:
             reply_textarea.fill(fallback_msg)
             self.page.wait_for_timeout(self._cfg.text_fill_ms)
 
-            # Click send
-            send_btn = first_comment.locator(
-                "button.tds-button-primary:has(i.tdsi-send-fill), "
-                "button:has-text('Gửi')"
+            # Click "Phản hồi" submit button (NOT "Gửi" — that's for inbox messages)
+            # After clicking the first "Phản hồi" to open the reply textarea,
+            # a second "Phản hồi" button appears to submit the reply.
+            reply_submit = self.page.locator(
+                "button.link-act:has-text('Phản hồi')"
             ).last
-            if send_btn.count() == 0:
-                send_btn = self.page.locator(
-                    "button.\\!rounded-full.tds-button-primary:has(i.tdsi-send-fill)"
+            if reply_submit.count() == 0:
+                # Fallback: any button with "Phản hồi" text near the reply area
+                reply_submit = first_comment.locator(
+                    "button:has-text('Phản hồi')"
                 ).last
-            send_btn.click(timeout=self._cfg.click_timeout)
+            for attempt in range(1, 4):
+                try:
+                    reply_submit.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+                    self.page.wait_for_timeout(200)
+                    try:
+                        reply_submit.click(timeout=self._cfg.click_timeout)
+                    except Exception:
+                        reply_submit.click(timeout=self._cfg.click_timeout, force=True)
+                    break
+                except Exception as exc:
+                    _log(f"  [!] Comment reply submit attempt {attempt}/3 error: {exc}")
+                    if attempt < 3:
+                        self.page.wait_for_timeout(500)
             self.page.wait_for_timeout(self._cfg.panel_open_ms)
 
             _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
@@ -989,6 +1086,7 @@ class OrderPage:
         max_records: int | None = None,
         data_dir: Path | None = None,
         campaign_label: str = "",
+        price_code_mapping: dict[str, int | None] | None = None,
     ) -> tuple[int, int, int]:
         """Single-pass: read each row, enrich immediately, write to CSV.
 
@@ -1039,10 +1137,10 @@ class OrderPage:
 
                 seen_codes.add(order_code)
 
-                # Check tag: must be empty or recheck tag (1.2/2.2)
+                # Check tag: must be empty (no tag)
                 tags = self._tag_values_in_order_cell(order_cell)
                 tag_value = tags[0] if tags else ""
-                if tags and tag_value not in RECHECK_TAGS:
+                if tags:
                     total_skipped += 1
                     total_seen += 1
                     _log(f"SKIP: stt={stt} order={order_code} reason=tag '{tag_value}'")
@@ -1110,7 +1208,7 @@ class OrderPage:
                         self._close_edit_modal_safely()
                         raise ValueError(f"modal shows wrong order, expected {order_code}")
 
-                    have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product()
+                    have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product(price_code_mapping)
 
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
 
@@ -1122,12 +1220,8 @@ class OrderPage:
                         match_label = f"NO MATCH (0/{total_products})"
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
-                    is_recheck = old_tag in RECHECK_TAGS
-                    if resolved_tag in RECHECK_TAGS and is_recheck:
-                        resolved_tag = old_tag
-                        _log(f"  RECHECK: still 0 match, keeping tag={old_tag}")
-
-                    if resolved_tag not in RECHECK_TAGS and data_dir is not None:
+                    # Save images for actionable tags (not tag-only 1.3/1.4/2.3/2.4)
+                    if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
                         saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
                     row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
@@ -1155,8 +1249,9 @@ class OrderPage:
                     tag_counts[resolved_tag] = tag_counts.get(resolved_tag, 0) + 1
 
                     # Send messages per tag
-                    if resolved_tag in RECHECK_TAGS:
-                        _log(f"  SKIP MSG: manual review tag={resolved_tag}")
+                    # 1.3/1.4/2.3/2.4 → tag only, no messages
+                    if resolved_tag in TAG_ONLY_TAGS:
+                        _log(f"  SKIP MSG: tag-only tag={resolved_tag}")
                     else:
                         self._dismiss_notifications()
                         msg_row = self.row_by_code(order_code)
@@ -1168,25 +1263,30 @@ class OrderPage:
                             self._wait_panel_ready()
 
                             partner_name = ""
-                            if resolved_tag in (TAG_1_1, TAG_2, TAG_2_1):
+                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
                                 partner_name = self._read_partner_name()
 
-                            msg_text = ""
-                            if resolved_tag in (TAG_2, TAG_2_1):
-                                msg_text = self._build_ask_address_message(partner_name)
-                            self._send_batched_in_open_panel(
-                                msg_text, saved_images or [], order_code
-                            )
+                            # MESS 1: ask address (TAG 2, 2.1, 2.2)
+                            if resolved_tag in (TAG_2, TAG_2_1, TAG_2_2):
+                                ask_msg = self._build_ask_address_message(partner_name)
+                                self._send_in_panel(ask_msg, None, order_code)
 
+                            # IMAGE: send product images separately (all tags except tag-only)
+                            if saved_images:
+                                self._send_batched_in_open_panel("", saved_images, order_code)
+
+                            # BILL: send bill image (TAG 1 only)
                             if resolved_tag == TAG_1 and bill_created:
                                 self._send_bill_image_in_panel(order_code)
                                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
+                            # MESS 2: deposit message (TAG 1.1, 2.1)
                             if resolved_tag in (TAG_1_1, TAG_2_1):
                                 deposit_msg = self._build_deposit_message(partner_name)
                                 self._send_in_panel(deposit_msg, None, order_code)
 
-                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_2, TAG_2_1):
+                            # MESS 3: reply comment (TAG 1.1, 1.2, 2, 2.1, 2.2)
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
                                 try:
                                     comment_ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
                                     row_data["Comment"] = "ok" if comment_ok else "send_fail"
@@ -1218,6 +1318,16 @@ class OrderPage:
                 csv_writer.write_row(row_data)
                 _log(f"  CSV +1: total={csv_writer.count}")
 
+                # Reload page every 5 processed orders to prevent memory/performance degradation
+                if processed % 5 == 0:
+                    _log(f"  [RELOAD] Refreshing page after {processed} orders to free memory")
+                    self.page.reload(wait_until="domcontentloaded")
+                    self.page.wait_for_timeout(self._cfg.table_load_ms)
+                    self.apply_campaign_filter(campaign_label)
+                    rows, count = self._wait_for_rows_on_page()
+                    i = 0
+                    continue
+
                 # Re-fetch rows since DOM may have changed after modal/tag/message interactions
                 rows = self.filtered_order_rows()
                 count = rows.count()
@@ -1243,22 +1353,22 @@ class OrderPage:
             f"[{ERR}]={error_count} | total_time={total_min}m{total_sec:02d}s"
         )
         _log("=" * 60)
-        action_count = sum(c for t, c in tag_counts.items() if t not in RECHECK_TAGS)
+        action_count = sum(c for t, c in tag_counts.items() if t not in TAG_ONLY_TAGS)
         return processed, action_count, error_count
 
-    def enrich_collected_rows(self, rows_data: list[dict[str, str]], data_dir: Path | None = None, campaign_label: str = "") -> tuple[int, int, int]:
-        # Build lookup: order_code -> row_data (only orders with no tag or recheck tags 1.2/2.2)
+    def enrich_collected_rows(self, rows_data: list[dict[str, str]], data_dir: Path | None = None, campaign_label: str = "", price_code_mapping: dict[str, int | None] | None = None) -> tuple[int, int, int]:
+        # Build lookup: order_code -> row_data (only orders with no tag)
         qualify_lookup: dict[str, dict[str, str]] = {}
         for r in rows_data:
             code = str(r.get("Order_Code", "")).strip()
             tag = str(r.get("Tag", "")).strip()
-            if code and (not tag or tag in RECHECK_TAGS):
+            if code and not tag:
                 qualify_lookup[code] = r
 
         total = len(qualify_lookup)
         skipped_existing = len(rows_data) - total
         _log("=" * 60)
-        _log(f"ENRICH: {total} qualifying orders (no tag / 1.2 / 2.2) | skipped {skipped_existing} with other tags")
+        _log(f"ENRICH: {total} qualifying orders (no tag) | skipped {skipped_existing} with tags")
         _log("=" * 60)
 
         processed = 0
@@ -1304,7 +1414,7 @@ class OrderPage:
                         self._close_edit_modal_safely()
                         raise ValueError(f"modal shows wrong order, expected {order_code}")
 
-                    have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product()
+                    have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product(price_code_mapping)
 
                     # Step 1: CHECK ADDRESS
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
@@ -1318,15 +1428,8 @@ class OrderPage:
                         match_label = f"NO MATCH (0/{total_products})"
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
-                    # Case 1.2/2.2: if still 0 matched on re-check, keep existing recheck tag
-                    is_recheck = old_tag in RECHECK_TAGS
-                    if resolved_tag in RECHECK_TAGS and is_recheck:
-                        # Still no match — keep existing tag unchanged
-                        resolved_tag = old_tag
-                        _log(f"  RECHECK: still 0 match, keeping tag={old_tag}")
-
-                    # Step 3: Save images (skip for manual-review tags 1.2/2.2; only matched products)
-                    if resolved_tag not in RECHECK_TAGS and data_dir is not None:
+                    # Save images for actionable tags (not tag-only 1.3/1.4/2.3/2.4)
+                    if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
                         saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
                     row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
@@ -1355,50 +1458,45 @@ class OrderPage:
 
                     tag_counts[resolved_tag] = tag_counts.get(resolved_tag, 0) + 1
 
-                    # Step 4: Send images + messages per tag
-                    # 1.2/2.2 → skip (manual review, tag only)
-                    # TAG 1   → images + bill image (if bill created)
-                    # TAG 1.1 → images, MESS 2 (deposit), MESS 3 (comment reply)
-                    # TAG 2   → images + MESS 1 (ask address), MESS 3 (comment reply)
-                    # TAG 2.1 → images + MESS 1, MESS 2, MESS 3 (comment reply)
-                    if resolved_tag in RECHECK_TAGS:
-                        _log(f"  SKIP MSG: manual review tag={resolved_tag}")
+                    # Send messages per tag
+                    # 1.3/1.4/2.3/2.4 → tag only, no messages
+                    if resolved_tag in TAG_ONLY_TAGS:
+                        _log(f"  SKIP MSG: tag-only tag={resolved_tag}")
                     else:
                         self._dismiss_notifications()
                         msg_row = self.row_by_code(order_code)
 
                         if msg_row.count() > 0:
-                            # Open panel ONCE for all messages of this order
                             self.message_button_in_row(msg_row).click(
                                 timeout=self._cfg.click_timeout, force=True
                             )
                             self._wait_panel_ready()
 
-                            # Read partner name if needed for MESS 1 or MESS 2
                             partner_name = ""
-                            if resolved_tag in (TAG_1_1, TAG_2, TAG_2_1):
+                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
                                 partner_name = self._read_partner_name()
 
-                            # MESS 1 (ask address) for no-address cases + images
-                            msg_text = ""
-                            if resolved_tag in (TAG_2, TAG_2_1):
-                                msg_text = self._build_ask_address_message(partner_name)
-                            self._send_batched_in_open_panel(
-                                msg_text, saved_images or [], order_code
-                            )
+                            # MESS 1: ask address (TAG 2, 2.1, 2.2)
+                            if resolved_tag in (TAG_2, TAG_2_1, TAG_2_2):
+                                ask_msg = self._build_ask_address_message(partner_name)
+                                self._send_in_panel(ask_msg, None, order_code)
 
-                            # TAG 1: send bill image after product images
+                            # IMAGE: send product images separately
+                            if saved_images:
+                                self._send_batched_in_open_panel("", saved_images, order_code)
+
+                            # BILL: send bill image (TAG 1 only)
                             if resolved_tag == TAG_1 and bill_created:
                                 self._send_bill_image_in_panel(order_code)
                                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
-                            # MESS 2: deposit message (cases 1.1, 2.1) — sent in same panel
+                            # MESS 2: deposit message (TAG 1.1, 2.1)
                             if resolved_tag in (TAG_1_1, TAG_2_1):
                                 deposit_msg = self._build_deposit_message(partner_name)
                                 self._send_in_panel(deposit_msg, None, order_code)
 
-                            # MESS 3: reply comment (cases 1.1, 2, 2.1) — done in same open panel
-                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_2, TAG_2_1):
+                            # MESS 3: reply comment (TAG 1.1, 1.2, 2, 2.1, 2.2)
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
                                 try:
                                     comment_ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
                                     row_data["Comment"] = "ok" if comment_ok else "send_fail"
@@ -1409,7 +1507,6 @@ class OrderPage:
                                 except Exception as exc:
                                     row_data["Comment"] = "send_fail"
                                     _log(f"  [!] Comment reply error: {exc}")
-                                # Wait 2s after comment reply before closing panel
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
 
                             self.page.keyboard.press("Escape")
@@ -1459,7 +1556,7 @@ class OrderPage:
             f"[{ERR}]={error_count} | total_time={total_min}m{total_sec:02d}s"
         )
         _log("=" * 60)
-        action_count = sum(c for t, c in tag_counts.items() if t not in RECHECK_TAGS)
+        action_count = sum(c for t, c in tag_counts.items() if t not in TAG_ONLY_TAGS)
         return processed, action_count, error_count
 
     def _is_order_status_nhap(self, row: Locator) -> bool:
@@ -1558,7 +1655,7 @@ class OrderPage:
         data: list[dict[str, str]],
         remaining_limit: int | None = None,
     ) -> tuple[int, int]:
-        """Extract qualifying rows: no tag or recheck tag (1.2/2.2) + Nháp status + Bình thường customer.
+        """Extract qualifying rows: no tag + Nháp status + Bình thường customer.
         remaining_limit counts ALL rows (added + skipped) toward the cap.
         Returns (added_count, skipped_count).
         """
@@ -1581,12 +1678,12 @@ class OrderPage:
             if not order_code or order_code in existing_codes:
                 continue
 
-            # Check tag: must be empty or a recheck tag (1.2/2.2)
+            # Check tag: must be empty (no tag)
             tags = self._tag_values_in_order_cell(order_cell)
             tag_value = tags[0] if tags else ""
-            if tags and tag_value not in RECHECK_TAGS:
+            if tags:
                 skipped += 1
-                _log(f"CSV collect SKIP: stt={stt} order={order_code} reason=tag '{tag_value}' not qualifying")
+                _log(f"CSV collect SKIP: stt={stt} order={order_code} reason=tag '{tag_value}'")
                 continue
 
             # Check order status: must be 'Nháp'
