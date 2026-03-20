@@ -9,14 +9,14 @@ Flow:
 
 TAG / Status (6 cases):
   Có địa chỉ:
-    260303993 - dưới 3 sản phẩm matched:    TAG = '1'    (status: HAVE_ADDR_LOW_SP)     → IMAGE_PRODUCT, IMAGE_ORDER_FINAL
-    260303990 - 4+ sản phẩm matched:         TAG = '1.1'  (status: HAVE_ADDR_HIGH_SP)    → IMAGE_PRODUCT, MESS_COC_TIEN, MESS_FB
-    260303989 (bị skip) - 0 matched product:           TAG = '1.2'  (status: HAVE_ADDR_NO_SP)      → chỉ gắn tag, user tự xử lý
+    - dưới 3 sản phẩm matched:    TAG = '1'    (status: HAVE_ADDR_LOW_SP)     → IMAGE_PRODUCT, IMAGE_ORDER_FINAL
+    - 4+ sản phẩm matched:         TAG = '1.1'  (status: HAVE_ADDR_HIGH_SP)    → IMAGE_PRODUCT, MESS_COC_TIEN, MESS_FB
+    - 0 matched product:           TAG = '1.2'  (status: HAVE_ADDR_NO_SP)      → chỉ gắn tag, user tự xử lý
 
   Không có địa chỉ:
-    260303994 - dưới 3 sản phẩm matched:    TAG = '2'    (status: NO_ADDR_LOW_SP)       → IMAGE_PRODUCT, MESS_DIA_CHI, MESS_FB
-    260303992 - 4+ sản phẩm matched:         TAG = '2.1'  (status: NO_ADDR_HIGH_SP)      → IMAGE_PRODUCT, MESS_DIA_CHI, MESS_COC_TIEN, MESS_FB
-    260303991 - 0 matched product:           TAG = '2.2'  (status: NO_ADDR_NO_SP)        → chỉ gắn tag, user tự xử lý
+    - dưới 3 sản phẩm matched:    TAG = '2'    (status: NO_ADDR_LOW_SP)       → IMAGE_PRODUCT, MESS_DIA_CHI, MESS_FB
+    - 4+ sản phẩm matched:         TAG = '2.1'  (status: NO_ADDR_HIGH_SP)      → IMAGE_PRODUCT, MESS_DIA_CHI, MESS_COC_TIEN, MESS_FB
+    - 0 matched product:           TAG = '2.2'  (status: NO_ADDR_NO_SP)        → chỉ gắn tag, user tự xử lý
 
 Case 1.2 & 2.2:
   - Chỉ gắn tag, KHÔNG gửi tin nhắn hay làm gì thêm
@@ -48,3 +48,10 @@ MESS_COC_TIEN mẫu:
 
 CSV cột Comment: ok / send_fail (theo kết quả MESS_FB)
 Test cap: 6 record đầu tiên (bao gồm cả row bị skip, log lý do skip)
+
+
+==========================
+masp	sdt	gia	thoi_diem_xu_ly	thoi_gian_xu_ly	so_lan_chay	trang_thai	loi_chi_tiet
+C15 KEM	358395433	144000	2026-03-20 00:25:20	2.73	1	ok	OK
+C15 KEM	974902390	144000	2026-03-20 00:25:25	4.27	1	ok	OK
+C15 KEM	839063689	144000	2026-03-20 00:25:29	4.71	1	ok	OK
