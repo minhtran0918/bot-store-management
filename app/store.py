@@ -75,6 +75,69 @@ def log_action(order_code: str, action: str, result: str, detail: str = "") -> N
         writer.writerow([datetime.now().isoformat(), order_code, action, result, detail])
 
 
+ORDER_CSV_HEADERS = [
+    "No",
+    "Order_Code",
+    "Tag",
+    "Channel",
+    "Customer",
+    "Total_Amount",
+    "Total_Qty",
+    "Address_Status",
+    "Note",
+    "Match_Product",
+    "Decision",
+    "Comment",
+]
+
+
+def make_csv_path(
+    campaign_label: str,
+    output_dir: Path | None = None,
+    output_path: Path | None = None,
+) -> Path:
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        return output_path
+    target_dir = output_dir or DATA_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    campaign_part = _safe_file_part(campaign_label.replace("LIVE", "", 1).strip())
+    return target_dir / f"orders_{campaign_part}_{stamp}.csv"
+
+
+class OrderCsvWriter:
+    """Incrementally write order rows to CSV — one row at a time."""
+
+    def __init__(self, path: Path):
+        self.path = path
+        self._file = path.open("w", newline="", encoding="utf-8-sig")
+        self._writer = csv.DictWriter(self._file, fieldnames=ORDER_CSV_HEADERS)
+        self._writer.writeheader()
+        self._file.flush()
+        self._count = 0
+
+    def write_row(self, row: dict[str, str]) -> None:
+        self._writer.writerow(
+            {k: str(row.get(k, "")).strip() for k in ORDER_CSV_HEADERS}
+        )
+        self._file.flush()
+        self._count += 1
+
+    @property
+    def count(self) -> int:
+        return self._count
+
+    def close(self) -> None:
+        self._file.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+
 def save_filtered_orders(
     rows: list[dict[str, str]],
     campaign_label: str,

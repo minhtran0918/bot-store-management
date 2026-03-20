@@ -983,6 +983,269 @@ class OrderPage:
         name = partner_name or "bạn"
         return self._cfg.deposit_template.format(name=name)
 
+    def collect_and_enrich_single_pass(
+        self,
+        csv_writer,
+        max_records: int | None = None,
+        data_dir: Path | None = None,
+        campaign_label: str = "",
+    ) -> tuple[int, int, int]:
+        """Single-pass: read each row, enrich immediately, write to CSV.
+
+        Returns (processed, action_count, error_count).
+        """
+        rows, count = self._wait_for_rows_on_page()
+        expected_total = self.pagination_total_count()
+        seen_codes: set[str] = set()
+        page_index = 1
+        total_seen = 0
+        total_skipped = 0
+        processed = 0
+        tag_counts: dict[str, int] = {}
+        error_count = 0
+        enrich_start = time.time()
+
+        _log(f"SINGLE-PASS started: rows={count} on page={page_index}")
+        if expected_total is not None:
+            _log(f"Expected total from tab count={expected_total}")
+
+        while True:
+            rows, count = self._wait_for_rows_on_page()
+            if count == 0:
+                break
+
+            _log(f"[PAGE {page_index}] {count} rows")
+
+            i = 0
+            while i < count:
+                if max_records is not None and total_seen >= max_records:
+                    _log(f"Reached test cap max_records={max_records}, stopping")
+                    break
+
+                row = rows.nth(i)
+                cells = row.locator("td")
+                if cells.count() < 9:
+                    i += 1
+                    continue
+
+                stt = cells.nth(3).inner_text().strip()
+                order_cell = cells.nth(4)
+                code_span = order_cell.locator("span").first
+                order_code = code_span.inner_text().strip() if code_span.count() > 0 else order_cell.inner_text().strip()
+
+                if not order_code or order_code in seen_codes:
+                    i += 1
+                    continue
+
+                seen_codes.add(order_code)
+
+                # Check tag: must be empty or recheck tag (1.2/2.2)
+                tags = self._tag_values_in_order_cell(order_cell)
+                tag_value = tags[0] if tags else ""
+                if tags and tag_value not in RECHECK_TAGS:
+                    total_skipped += 1
+                    total_seen += 1
+                    _log(f"SKIP: stt={stt} order={order_code} reason=tag '{tag_value}'")
+                    i += 1
+                    continue
+
+                # Check status: must be 'Nháp'
+                if not self._is_order_status_nhap(row):
+                    total_skipped += 1
+                    total_seen += 1
+                    _log(f"SKIP: stt={stt} order={order_code} reason=status not 'Nháp'")
+                    i += 1
+                    continue
+
+                # Check customer: must be 'Bình thường'
+                if not self._is_customer_binh_thuong(row):
+                    total_skipped += 1
+                    total_seen += 1
+                    _log(f"SKIP: stt={stt} order={order_code} reason=customer not 'Bình thường'")
+                    i += 1
+                    continue
+
+                total_seen += 1
+
+                # Extract basic row data
+                channel_cell = cells.nth(5)
+                channel_span = channel_cell.locator("span.ml-2").first
+                channel_name = channel_span.inner_text().strip() if channel_span.count() > 0 else channel_cell.inner_text().strip()
+
+                customer_cell = cells.nth(6)
+                customer_p = customer_cell.locator("p").first
+                customer_name = customer_p.inner_text().strip() if customer_p.count() > 0 else customer_cell.inner_text().strip()
+
+                total_amount = cells.nth(7).inner_text().strip()
+                total_qty = cells.nth(8).inner_text().strip()
+
+                row_data: dict[str, str] = {
+                    "No": stt,
+                    "Order_Code": order_code,
+                    "Tag": tag_value,
+                    "Channel": channel_name,
+                    "Customer": customer_name,
+                    "Total_Amount": total_amount,
+                    "Total_Qty": total_qty,
+                    "Address_Status": "",
+                    "Note": "",
+                    "Match_Product": "",
+                    "Decision": "",
+                    "Comment": "",
+                }
+                old_tag = tag_value
+                processed += 1
+
+                _log("-" * 60)
+                _log(f"---- ORDER = {order_code}  ({processed})  {customer_name}  old_tag={old_tag or '(none)'} ----")
+
+                order_start = time.time()
+                saved_images: list[Path] = []
+                try:
+                    self._dismiss_notifications()
+                    self.open_edit_modal_by_row(row)
+                    self.wait_modal()
+
+                    if not self._verify_modal_order_code(order_code):
+                        self._close_edit_modal_safely()
+                        raise ValueError(f"modal shows wrong order, expected {order_code}")
+
+                    have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product()
+
+                    _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
+
+                    if matched_count >= 4:
+                        match_label = f"4+ ({matched_count}/{total_products})"
+                    elif matched_count >= 1:
+                        match_label = f"1-3 ({matched_count}/{total_products})"
+                    else:
+                        match_label = f"NO MATCH (0/{total_products})"
+                    _log(f"  CHECK PRODUCT -> {match_label}")
+
+                    is_recheck = old_tag in RECHECK_TAGS
+                    if resolved_tag in RECHECK_TAGS and is_recheck:
+                        resolved_tag = old_tag
+                        _log(f"  RECHECK: still 0 match, keeping tag={old_tag}")
+
+                    if resolved_tag not in RECHECK_TAGS and data_dir is not None:
+                        saved_images = self.save_product_images(order_code, data_dir, note_prices)
+
+                    row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
+                    row_data["Match_Product"] = match_label
+                    row_data["Tag"] = resolved_tag
+                    row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
+
+                    bill_created = False
+                    if resolved_tag == TAG_1:
+                        bill_created = self._create_order_bill(order_code)
+
+                    self._close_edit_modal_safely()
+                    self._dismiss_notifications()
+
+                    if resolved_tag != old_tag:
+                        if not self._apply_processed_tag_to_order(order_code, resolved_tag):
+                            row_data["Tag"] = ERR
+                            error_count += 1
+                            _log(f"  [!] TAG FAILED: target={resolved_tag}")
+                        else:
+                            _log(f"  TAG -> {resolved_tag}")
+                    else:
+                        _log(f"  TAG unchanged: {resolved_tag}")
+
+                    tag_counts[resolved_tag] = tag_counts.get(resolved_tag, 0) + 1
+
+                    # Send messages per tag
+                    if resolved_tag in RECHECK_TAGS:
+                        _log(f"  SKIP MSG: manual review tag={resolved_tag}")
+                    else:
+                        self._dismiss_notifications()
+                        msg_row = self.row_by_code(order_code)
+
+                        if msg_row.count() > 0:
+                            self.message_button_in_row(msg_row).click(
+                                timeout=self._cfg.click_timeout, force=True
+                            )
+                            self._wait_panel_ready()
+
+                            partner_name = ""
+                            if resolved_tag in (TAG_1_1, TAG_2, TAG_2_1):
+                                partner_name = self._read_partner_name()
+
+                            msg_text = ""
+                            if resolved_tag in (TAG_2, TAG_2_1):
+                                msg_text = self._build_ask_address_message(partner_name)
+                            self._send_batched_in_open_panel(
+                                msg_text, saved_images or [], order_code
+                            )
+
+                            if resolved_tag == TAG_1 and bill_created:
+                                self._send_bill_image_in_panel(order_code)
+                                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+                            if resolved_tag in (TAG_1_1, TAG_2_1):
+                                deposit_msg = self._build_deposit_message(partner_name)
+                                self._send_in_panel(deposit_msg, None, order_code)
+
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_2, TAG_2_1):
+                                try:
+                                    comment_ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
+                                    row_data["Comment"] = "ok" if comment_ok else "send_fail"
+                                except Exception as exc:
+                                    row_data["Comment"] = "send_fail"
+                                    _log(f"  [!] Comment reply error: {exc}")
+                                self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
+
+                            self.page.keyboard.press("Escape")
+                            self.page.wait_for_timeout(self._cfg.escape_close_ms)
+                        else:
+                            _log(f"  [!] Row not found for sending: {order_code}")
+
+                    order_elapsed = time.time() - order_start
+                    _log(f"  DONE ORDER = {order_code} | STT = {processed} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+
+                except Exception as exc:
+                    row_data["Tag"] = ERR
+                    row_data["Address_Status"] = ERR
+                    row_data["Match_Product"] = ""
+                    row_data["Note"] = f"error: {exc}"
+                    error_count += 1
+                    _log(f"  [!] FAILED: {exc}")
+                    _log(f"  [!] Stack trace:\n{traceback.format_exc()}")
+                finally:
+                    self._close_edit_modal_safely()
+
+                # Write row to CSV immediately
+                csv_writer.write_row(row_data)
+                _log(f"  CSV +1: total={csv_writer.count}")
+
+                # Re-fetch rows since DOM may have changed after modal/tag/message interactions
+                rows = self.filtered_order_rows()
+                count = rows.count()
+                # Don't increment i — re-scan from same index since rows may have shifted
+                # But if count dropped, adjust
+                if i >= count:
+                    break
+
+            if max_records is not None and total_seen >= max_records:
+                break
+
+            marker = self._first_row_marker(rows)
+            if not self._go_to_next_page(page_index, marker):
+                break
+            page_index += 1
+
+        total_elapsed = time.time() - enrich_start
+        total_min, total_sec = divmod(int(total_elapsed), 60)
+        _log("=" * 60)
+        tag_summary = "  ".join(f"[{t}]={c}" for t, c in sorted(tag_counts.items()))
+        _log(
+            f"SUMMARY: processed={processed} skipped={total_skipped} | {tag_summary}  "
+            f"[{ERR}]={error_count} | total_time={total_min}m{total_sec:02d}s"
+        )
+        _log("=" * 60)
+        action_count = sum(c for t, c in tag_counts.items() if t not in RECHECK_TAGS)
+        return processed, action_count, error_count
+
     def enrich_collected_rows(self, rows_data: list[dict[str, str]], data_dir: Path | None = None, campaign_label: str = "") -> tuple[int, int, int]:
         # Build lookup: order_code -> row_data (only orders with no tag or recheck tags 1.2/2.2)
         qualify_lookup: dict[str, dict[str, str]] = {}
