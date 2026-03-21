@@ -86,6 +86,11 @@ keywords:
     - "tự lấy"
     - "lấy tại shop"
   match_product: []
+  skip_customer_tags:
+    - "1 Khách Mập/Ốm"
+    - "1 Tỷ lệ thấp"
+    - "3 Đặt lại bắt cọc"
+    - "3 Không Cho Đặt"
 
 credentials:
   #username: "0915500082"

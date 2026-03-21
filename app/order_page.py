@@ -866,12 +866,10 @@ class OrderPage:
 
         if oos_products:
             _log(f"  OOS: forecast_stocks={forecast_stocks} oos_count={len(oos_products)}/{total_products}")
-            if exact_match:
-                # Products matched but some are OOS → TAG 1.4/2.4
-                status = HAVE_ADDR_OOS if have_address else NO_ADDR_OOS
-                tag = STATUS_TO_TAG[status]
-                return have_address, matched_count, total_products, tag, note_prices, oos_products
-            # Products don't match → TAG 1.2/2.2 (mismatch takes priority, but carry OOS info)
+            # Any OOS → always TAG 1.4/2.4 (regardless of match status)
+            status = HAVE_ADDR_OOS if have_address else NO_ADDR_OOS
+            tag = STATUS_TO_TAG[status]
+            return have_address, matched_count, total_products, tag, note_prices, oos_products
 
         tag = _resolve_product_match_tag(have_address, total_products, exact_match)
         return have_address, matched_count, total_products, tag, note_prices, oos_products
@@ -1185,14 +1183,13 @@ class OrderPage:
                 # Remember the first usable button as fallback
                 if first_btn is None:
                     first_btn = btn
-                # Check if comment text is all '*' (e.g. "**************")
+                # Check if comment contains 5+ consecutive '*' (e.g. "92k **********")
                 try:
                     comment_text = comment.inner_text(timeout=self._cfg.inner_text_read_ms).strip()
-                    # Extract just the comment body (first line, ignore timestamps/buttons)
                     body = comment_text.split("\n")[0].strip()
-                    if body and re.fullmatch(r"\*+", body):
+                    if body and re.search(r"\*{5,}", body):
                         reply_btn = btn
-                        _log(f"  COMMENT: found star-only comment at index {ci}")
+                        _log(f"  COMMENT: found star comment at index {ci}: '{body[:40]}'")
                         break
                 except Exception:
                     pass
@@ -1397,7 +1394,7 @@ class OrderPage:
                 total_qty = cells.nth(8).inner_text().strip()
 
                 # Check customer: must be 'Bình thường' — if not, tag as TAG 0 and write CSV
-                if not self._is_customer_binh_thuong(row):
+                if not self._is_customer_normal(row):
                     processed += 1
                     row_data_t0: dict[str, str] = {
                         "No": stt,
@@ -1509,11 +1506,11 @@ class OrderPage:
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
                         oos_price_list = [p["price"] for p in oos_products] if oos_products else None
                         if resolved_tag in OOS_TAGS:
-                            # OOS tags: no note_prices filter, just exclude OOS
+                            # OOS tags: send only in-stock product images
                             saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
                         elif resolved_tag in (TAG_1_2, TAG_2_2):
-                            # Mismatch: no note_prices filter, exclude OOS products
-                            saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
+                            # Mismatch (all in-stock): send ALL product images
+                            saved_images = self.save_product_images(order_code, data_dir)
                         else:
                             saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
@@ -1589,10 +1586,14 @@ class OrderPage:
                                 elif resolved_tag in (TAG_2_2, TAG_2_4):
                                     _log(f"  SKIP MESS 1: all products OOS, no point asking address")
 
-                            # MESS 2: deposit message (TAG 1.1, 2.1)
-                            if self._cfg.enable_send_message and resolved_tag in (TAG_1_1, TAG_2_1):
-                                deposit_msg = self._build_deposit_message(partner_name)
-                                self._send_in_panel(deposit_msg, None, order_code)
+                            # MESS 2: deposit message (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
+                            if self._cfg.enable_send_message:
+                                if resolved_tag in (TAG_1_1, TAG_2_1):
+                                    deposit_msg = self._build_deposit_message(partner_name)
+                                    self._send_in_panel(deposit_msg, None, order_code)
+                                elif resolved_tag in OOS_TAGS and in_stock_count >= 4:
+                                    deposit_msg = self._build_deposit_message(partner_name)
+                                    self._send_in_panel(deposit_msg, None, order_code)
 
                             # MESS 3: reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
                             if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
@@ -1788,14 +1789,15 @@ class OrderPage:
 
                     # Save images for actionable tags (not tag-only 1.3)
                     # OOS tags (1.4/2.4): send only in-stock product images
-                    # Mismatch tags (1.2/2.2): send only in-stock product images (skip OOS)
+                    # Mismatch tags (1.2/2.2): all in-stock, send ALL product images
                     # Normal tags: filter by note_prices
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
                         oos_price_list = [p["price"] for p in oos_products] if oos_products else None
                         if resolved_tag in OOS_TAGS:
                             saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
                         elif resolved_tag in (TAG_1_2, TAG_2_2):
-                            saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
+                            # Mismatch (all in-stock): send ALL product images
+                            saved_images = self.save_product_images(order_code, data_dir)
                         else:
                             saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
@@ -1873,10 +1875,14 @@ class OrderPage:
                                 elif resolved_tag in (TAG_2_2, TAG_2_4):
                                     _log(f"  SKIP MESS 1: all products OOS, no point asking address")
 
-                            # MESS 2: deposit message (TAG 1.1, 2.1)
-                            if self._cfg.enable_send_message and resolved_tag in (TAG_1_1, TAG_2_1):
-                                deposit_msg = self._build_deposit_message(partner_name)
-                                self._send_in_panel(deposit_msg, None, order_code)
+                            # MESS 2: deposit message (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
+                            if self._cfg.enable_send_message:
+                                if resolved_tag in (TAG_1_1, TAG_2_1):
+                                    deposit_msg = self._build_deposit_message(partner_name)
+                                    self._send_in_panel(deposit_msg, None, order_code)
+                                elif resolved_tag in OOS_TAGS and in_stock_count >= 4:
+                                    deposit_msg = self._build_deposit_message(partner_name)
+                                    self._send_in_panel(deposit_msg, None, order_code)
 
                             # MESS 3: reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
                             if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
@@ -1952,12 +1958,20 @@ class OrderPage:
         except Exception:
             return False
 
-    def _is_customer_binh_thuong(self, row: Locator) -> bool:
-        """Check if the customer in the row has label 'Bình thường' (Normal)."""
+    def _is_customer_normal(self, row: Locator) -> bool:
+        """Check if the customer in the row does NOT have any skip-tags.
+
+        Returns False (= TAG 0) when any of skip_customer_tags is found.
+        """
         try:
+            skip_tags = self._cfg.skip_customer_tags
+            if not skip_tags:
+                return True
             customer_cell = row.locator("td").nth(6)
-            label_tag = customer_cell.locator("tds-tag:has-text('Bình thường')").first
-            return label_tag.count() > 0
+            for tag_text in skip_tags:
+                if customer_cell.locator(f"tds-tag:has-text('{tag_text}')").first.count() > 0:
+                    return False
+            return True
         except Exception:
             return False
 
@@ -2094,7 +2108,7 @@ class OrderPage:
             total_qty = cells.nth(8).inner_text().strip()
 
             # Check customer label: must be 'Bình thường' — if not, include with TAG 0
-            if not self._is_customer_binh_thuong(row):
+            if not self._is_customer_normal(row):
                 _log(f"CSV collect: stt={stt} order={order_code} customer not 'Bình thường' -> TAG 0")
                 data.append({
                     "No": stt,

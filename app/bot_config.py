@@ -14,6 +14,7 @@ class BotConfig:
         self._features: dict = config.get("features") or {}
         self._timeouts: dict = config.get("timeouts") or {}
         self._messages: dict = config.get("messages") or {}
+        self._keywords: dict = config.get("keywords") or {}
         self._validate_timeouts()
         self._validate_messages()
 
@@ -114,6 +115,18 @@ class BotConfig:
             return max(0, min(100, int(self._bot.get("low_delivery_rate_pct", 60))))
         except (TypeError, ValueError):
             return 60
+
+    # ------------------------------------------------------------------
+    # Keywords / lists
+    # ------------------------------------------------------------------
+
+    @property
+    def skip_customer_tags(self) -> list[str]:
+        """Customer tags that trigger TAG 0 (skip processing)."""
+        val = self._keywords.get("skip_customer_tags")
+        if val and isinstance(val, list):
+            return [str(v).strip() for v in val if v]
+        return []
 
     # ------------------------------------------------------------------
     # Feature flags

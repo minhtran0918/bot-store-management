@@ -42,6 +42,7 @@ STATUS_TO_TAG = {
 }
 
 # Tags that indicate "manual review needed" — orders with these tags get re-checked on next run
+# NOTE: 1.2/2.2 now only contain orders where ALL products are in stock (no OOS)
 RECHECK_TAGS = {TAG_1_2, TAG_2_2}
 
 # Tags that indicate "tag only, no action" — orders with these tags are skipped for messaging

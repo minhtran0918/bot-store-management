@@ -112,6 +112,10 @@ def load_config(path: Path | str = "config.yaml") -> dict:
     if not isinstance(pickup, list):
         pickup = []
 
+    skip_customer_tags = keywords.get("skip_customer_tags", [])
+    if not isinstance(skip_customer_tags, list):
+        skip_customer_tags = []
+
     try:
         keep_open_seconds = int(debug.get("keep_open_seconds", 120))
     except Exception:
@@ -141,6 +145,7 @@ def load_config(path: Path | str = "config.yaml") -> dict:
         "timeouts": timeouts,
         "keywords": {
             "pickup": [str(item) for item in pickup],
+            "skip_customer_tags": [str(item) for item in skip_customer_tags],
         },
         "credentials": {
             "username": str(credentials.get("username", "")).strip(),
