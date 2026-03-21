@@ -16,7 +16,7 @@ import re
 
 from .constants import (
     ERR, TAG_ONLY_TAGS, STATUS_TO_TAG,
-    TAG_1, TAG_1_1, TAG_1_2, TAG_1_3, TAG_1_4,
+    TAG_0, TAG_1, TAG_1_1, TAG_1_2, TAG_1_3, TAG_1_4,
     TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4,
     HAVE_ADDR_LOW_SP, HAVE_ADDR_HIGH_SP, HAVE_ADDR_NO_SP,
     HAVE_ADDR_NO_PROD, HAVE_ADDR_OOS,
@@ -713,6 +713,55 @@ class OrderPage:
                 forecasts.append(0)
         return forecasts
 
+    def _check_delivery_rate(self) -> tuple[bool, str]:
+        """Check customer delivery success rate from modal.
+
+        Returns (is_low_rate, rate_text).
+        - is_low_rate=True when rate < configured threshold (default 60%)
+        - 0/0 (first-time customer) is NOT considered low rate
+        """
+        try:
+            el = self.page.locator("span.text-caption-2:has-text('Tỉ lệ giao thành công')").first
+            if el.count() == 0:
+                return False, ""
+            text = el.inner_text(timeout=self._cfg.inner_text_read_ms).strip()
+
+            # Extract (delivered/total) from text like "Tỉ lệ giao thành công: 71% (27/38)"
+            m = re.search(r"\((\d+)/(\d+)\)", text)
+            if not m:
+                return False, text
+            delivered, total = int(m.group(1)), int(m.group(2))
+
+            # 0/0 = first-time customer, not low rate
+            if total == 0:
+                return False, text
+
+            rate_pct = (delivered / total) * 100
+            threshold = self._cfg.low_delivery_rate_pct
+            # Strictly less than (<), NOT <=. E.g. threshold=60: 59% is low, 60% is OK.
+            is_low = rate_pct < threshold
+            return is_low, text
+        except Exception as exc:
+            _log(f"  [WARN] Could not read delivery rate: {exc}")
+            return False, ""
+
+    def _set_customer_ty_le_thap(self) -> bool:
+        """Change customer status from 'Bình thường' to '1 Tỷ lệ thấp' via dropdown in modal."""
+        try:
+            # Click 'Bình thường' to open dropdown
+            btn = self.page.locator("span.cursor-pointer:has-text('Bình thường')").first
+            btn.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(self._cfg.panel_open_ms)
+
+            # Select '1 Tỷ lệ thấp' from dropdown
+            item = self.page.locator("div[tds-dropdown-item] a.text-body-2:has-text('Tỷ lệ thấp')").first
+            item.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(self._cfg.tag_update_ms)
+            return True
+        except Exception as exc:
+            _log(f"  [WARN] Failed to set customer 'Tỷ lệ thấp': {exc}")
+            return False
+
     def _evaluate_modal_address_and_product(
         self,
         price_code_mapping: dict[str, int | None] | None = None,
@@ -1225,6 +1274,38 @@ class OrderPage:
                         self._close_edit_modal_safely()
                         raise ValueError(f"modal shows wrong order, expected {order_code}")
 
+                    # Check delivery rate BEFORE address & product matching
+                    is_low_rate, rate_text = self._check_delivery_rate()
+                    if is_low_rate:
+                        _log(f"  LOW DELIVERY RATE: {rate_text} -> TAG 0, skip")
+                        self._set_customer_ty_le_thap()
+                        resolved_tag = TAG_0
+                        row_data["Tag"] = TAG_0
+                        row_data["Address_Status"] = "LOW_RATE"
+                        row_data["Note"] = rate_text
+                        row_data["Decision"] = "skip_low_rate"
+                        self._close_edit_modal_safely()
+                        self._dismiss_notifications()
+                        if TAG_0 != old_tag:
+                            if not self._apply_processed_tag_to_order(order_code, TAG_0):
+                                row_data["Tag"] = ERR
+                                error_count += 1
+                                _log(f"  [!] TAG 0 FAILED")
+                            else:
+                                _log(f"  TAG -> 0")
+                        tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
+                        order_elapsed = time.time() - order_start
+                        _log(f"  DONE ORDER = {order_code} | STT = {processed} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                        # Write CSV + skip rest of try block (finally still runs)
+                        csv_writer.write_row(row_data)
+                        _log(f"  CSV +1: total={csv_writer.count}")
+                        # Re-fetch rows since DOM changed after tag update
+                        rows = self.filtered_order_rows()
+                        count = rows.count()
+                        if i >= count:
+                            break
+                        continue
+
                     have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product(price_code_mapping)
 
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
@@ -1335,13 +1416,15 @@ class OrderPage:
                 csv_writer.write_row(row_data)
                 _log(f"  CSV +1: total={csv_writer.count}")
 
-                # Reload page every 5 processed orders to prevent memory/performance degradation
-                if processed % 5 == 0:
+                # Reload page periodically to prevent memory/performance degradation
+                reload_n = self._cfg.reload_every_n_orders
+                if reload_n > 0 and processed % reload_n == 0:
                     _log(f"  [RELOAD] Refreshing page after {processed} orders to free memory")
-                    self.page.reload(wait_until="domcontentloaded")
+                    self.page.reload(wait_until="networkidle")
                     self.page.wait_for_timeout(self._cfg.table_load_ms)
                     self.apply_campaign_filter(campaign_label)
                     rows, count = self._wait_for_rows_on_page()
+                    _log(f"  [RELOAD] Done — {count} rows loaded on page")
                     i = 0
                     continue
 
@@ -1435,6 +1518,29 @@ class OrderPage:
                     if not self._verify_modal_order_code(order_code):
                         self._close_edit_modal_safely()
                         raise ValueError(f"modal shows wrong order, expected {order_code}")
+
+                    # Check delivery rate BEFORE address & product matching
+                    is_low_rate, rate_text = self._check_delivery_rate()
+                    if is_low_rate:
+                        _log(f"  LOW DELIVERY RATE: {rate_text} -> TAG 0, skip")
+                        self._set_customer_ty_le_thap()
+                        row_data["Tag"] = TAG_0
+                        row_data["Address_Status"] = "LOW_RATE"
+                        row_data["Note"] = rate_text
+                        row_data["Decision"] = "skip_low_rate"
+                        self._close_edit_modal_safely()
+                        self._dismiss_notifications()
+                        if TAG_0 != old_tag:
+                            if not self._apply_processed_tag_to_order(order_code, TAG_0):
+                                row_data["Tag"] = ERR
+                                error_count += 1
+                                _log(f"  [!] TAG 0 FAILED")
+                            else:
+                                _log(f"  TAG -> 0")
+                        tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
+                        order_elapsed = time.time() - order_start
+                        _log(f"  DONE ORDER = {order_code} | STT = {processed} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                        continue
 
                     have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product(price_code_mapping)
 

@@ -120,6 +120,22 @@ class BotConfig:
             return [str(v).strip() for v in val if v]
         return []
 
+    @property
+    def reload_every_n_orders(self) -> int:
+        """Reload page every N processed orders. 0 = disabled."""
+        try:
+            return max(0, int(self._bot.get("reload_every_n_orders", 4)))
+        except (TypeError, ValueError):
+            return 4
+
+    @property
+    def low_delivery_rate_pct(self) -> int:
+        """Delivery success rate threshold (%). Below this → TAG 0 (skip). Default 60."""
+        try:
+            return max(0, min(100, int(self._bot.get("low_delivery_rate_pct", 60))))
+        except (TypeError, ValueError):
+            return 60
+
     # ------------------------------------------------------------------
     # Feature flags
     # ------------------------------------------------------------------

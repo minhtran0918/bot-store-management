@@ -4,9 +4,11 @@ headless: false
 
 # ─── Bot runtime settings ────────────────────────────────────────────────────
 bot:
-  test_max_collect_records: null   # Limit rows per run (for testing). Set to null for full run.
+  test_max_collect_records: 6   # Limit rows per run (for testing). Set to null for full run.
   max_images_per_send: 3        # Max images per message send (larger sets are split into batches).
   test_order_ids: []            # Only process these order codes (empty = process all). E.g. ["ORD001", "ORD002"]
+  reload_every_n_orders: 4      # Reload page every N processed orders to free memory. Set to 0 to disable.
+  low_delivery_rate_pct: 60     # Delivery success rate threshold (%). Below this → TAG 0 (skip). 0/0 = OK.
 
 # ─── Feature flags ───────────────────────────────────────────────────────────
 features:

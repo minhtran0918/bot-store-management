@@ -94,17 +94,25 @@ def _list_existing_order_csv_files(data_dir: Path) -> list[Path]:
     return files
 
 
-PRICE_CODE_KEYS = [f"A{i}" for i in range(1, 10)]  # A1..A9
+MAX_A_CODES = 9  # A1..A9
 
 
 def prompt_price_code_mapping() -> dict[str, int | None]:
-    """Step 3/3: prompt user to input price values for A1-A9 codes.
+    """Step 3/3: prompt user to input price values for A-codes.
 
-    Enter = null (skip). These map product alias codes in notes to actual prices.
+    First asks how many A-codes are active today (default 0 = none).
+    Then prompts price for each A1..An.
     """
+    raw_count = text_input("Number of A-codes today (0-9, enter=0)", step=3, total=TOTAL_STEPS)
+    try:
+        num_codes = max(0, min(MAX_A_CODES, int(raw_count)))
+    except (TypeError, ValueError):
+        num_codes = 0
+
     mapping: dict[str, int | None] = {}
-    for key in PRICE_CODE_KEYS:
-        raw = text_input(f"{key} price (enter=skip)", step=3, total=TOTAL_STEPS)
+    for i in range(1, num_codes + 1):
+        key = f"A{i}"
+        raw = text_input(f"{key} price", step=3, total=TOTAL_STEPS)
         if raw:
             try:
                 mapping[key] = int(raw)
