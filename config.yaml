@@ -20,9 +20,9 @@ features:
 
 # ─── Playwright timing (milliseconds) ────────────────────────────────────────
 timeouts:
-  click: 3000            # General element click
-  click_slow: 5000       # Slow elements: filter panel, Apply button
-  modal: 6000            # Wait for order edit modal to appear
+  click: 2500            # General element click
+  click_slow: 4000       # Slow elements: filter panel, Apply button
+  modal: 5000            # Wait for order edit modal to appear
   panel_open: 500        # After opening the message panel
   text_fill: 300         # After filling a textarea
   image_attach: 500      # After file chooser sets image files
@@ -34,16 +34,16 @@ timeouts:
   filter_search: 400     # After typing in campaign filter (wait for results)
   filter_apply: 800      # After clicking Apply filter
   escape_close: 500      # After pressing Escape to close a panel
-  table_load: 5000       # Wait for order table rows to appear after navigation
-  spinner_hide: 3000     # Wait for upload spinner to disappear
+  table_load: 4000       # Wait for order table rows to appear after navigation
+  spinner_hide: 2500     # Wait for upload spinner to disappear
   error_recheck: 1500    # Wait before rechecking if send error is transient
-  comment_reply_post: 2000  # Wait after sending a comment reply
+  comment_reply_post: 1500  # Wait after sending a comment reply
   notification_click: 500   # Click timeout for notification close buttons
-  inner_text_read: 2000  # Timeout for reading element inner text
+  inner_text_read: 1500  # Timeout for reading element inner text
   tag_clear: 150         # Wait after clearing tags via JS
   tag_backspace: 100     # Wait after backspace clearing tags
   bill_create_step: 1000 # Wait between steps when creating sales bill (Lưu nháp)
-  bill_image_load: 2000  # Wait for bill image to load into message box
+  bill_image_load: 1500  # Wait for bill image to load into message box
 
 # ─── Business messages ───────────────────────────────────────────────────────
 messages:
@@ -94,4 +94,3 @@ auth:
 debug:
   keep_open: true
   keep_open_seconds: 180
-

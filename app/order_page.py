@@ -44,6 +44,34 @@ def _remove_diacritics(text: str) -> str:
     cleaned = re.sub(r"\s+", "_", cleaned).strip("_")
     return cleaned
 
+
+def _resolve_product_match_tag(
+    have_address: bool,
+    total_products: int,
+    exact_match: bool,
+) -> str:
+    """Resolve tag from address presence and exact note/product match state."""
+    if exact_match:
+        status = HAVE_ADDR_HIGH_SP if have_address else NO_ADDR_HIGH_SP
+        if total_products <= 3:
+            status = HAVE_ADDR_LOW_SP if have_address else NO_ADDR_LOW_SP
+    else:
+        status = HAVE_ADDR_NO_SP if have_address else NO_ADDR_NO_SP
+    return STATUS_TO_TAG[status]
+
+
+def _build_match_label(matched_count: int, total_products: int, resolved_tag: str) -> str:
+    """Build a human-readable match summary for logs/CSV."""
+    if total_products <= 0:
+        return "NO PRODUCT (0/0)"
+    if resolved_tag in (TAG_1_2, TAG_2_2):
+        if matched_count == 0:
+            return f"NO MATCH (0/{total_products})"
+        return f"PARTIAL ({matched_count}/{total_products})"
+    if total_products >= 4:
+        return f"FULL 4+ ({matched_count}/{total_products})"
+    return f"FULL 1-3 ({matched_count}/{total_products})"
+
 class OrderPage:
     def __init__(self, page: Page, bot_config: BotConfig | None = None):
         self.page = page
@@ -790,32 +818,22 @@ class OrderPage:
             return have_address, 0, total_products, tag, note_prices
 
         # Match note prices against product prices (quantity-based matching)
-        # E.g. products=[158, 158, 123] note=[158, 158, 123] → matched=3
+        # Exact multiset equality is required before the order is treated as a
+        # full match eligible for TAG 1/1.1/2/2.1.
         if note_prices and product_prices:
             product_counter = Counter(product_prices)
             note_counter = Counter(note_prices)
             matched_count = sum(min(product_counter[p], note_counter[p]) for p in product_counter if p in note_counter)
+            exact_match = product_counter == note_counter
         else:
             matched_count = 0
-        _log(f"  PRODUCTS={product_prices} NOTE_PRICES={note_prices} MATCHED={matched_count}/{len(product_prices)}")
+            exact_match = False
+        _log(
+            f"  PRODUCTS={product_prices} NOTE_PRICES={note_prices} "
+            f"MATCHED={matched_count}/{len(product_prices)} EXACT={'Y' if exact_match else 'N'}"
+        )
 
-        # Tag logic — 6 cases
-        if have_address:
-            if matched_count == 0:
-                status = HAVE_ADDR_NO_SP
-            elif matched_count >= 4:
-                status = HAVE_ADDR_HIGH_SP
-            else:
-                status = HAVE_ADDR_LOW_SP
-        else:
-            if matched_count == 0:
-                status = NO_ADDR_NO_SP
-            elif matched_count >= 4:
-                status = NO_ADDR_HIGH_SP
-            else:
-                status = NO_ADDR_LOW_SP
-
-        tag = STATUS_TO_TAG[status]
+        tag = _resolve_product_match_tag(have_address, total_products, exact_match)
         return have_address, matched_count, total_products, tag, note_prices
 
     def _close_edit_modal_safely(self) -> None:
@@ -1325,16 +1343,11 @@ class OrderPage:
 
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
 
-                    if matched_count >= 4:
-                        match_label = f"4+ ({matched_count}/{total_products})"
-                    elif matched_count >= 1:
-                        match_label = f"1-3 ({matched_count}/{total_products})"
-                    else:
-                        match_label = f"NO MATCH (0/{total_products})"
+                    match_label = _build_match_label(matched_count, total_products, resolved_tag)
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
                     # Save images for actionable tags (not tag-only 1.3/1.4/2.3/2.4)
-                    # For TAG 1.2/2.2 (no match): skip price filter so all product images are included
+                    # For TAG 1.2/2.2 (mismatch): skip price filter so all product images are included
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
                         img_prices = None if resolved_tag in (TAG_1_2, TAG_2_2) else note_prices
                         saved_images = self.save_product_images(order_code, data_dir, img_prices)
@@ -1561,16 +1574,11 @@ class OrderPage:
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
 
                     # Step 2: CHECK PRODUCT + NOTE
-                    if matched_count >= 4:
-                        match_label = f"4+ ({matched_count}/{total_products})"
-                    elif matched_count >= 1:
-                        match_label = f"1-3 ({matched_count}/{total_products})"
-                    else:
-                        match_label = f"NO MATCH (0/{total_products})"
+                    match_label = _build_match_label(matched_count, total_products, resolved_tag)
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
                     # Save images for actionable tags (not tag-only 1.3/1.4/2.3/2.4)
-                    # For TAG 1.2/2.2 (no match): skip price filter so all product images are included
+                    # For TAG 1.2/2.2 (mismatch): skip price filter so all product images are included
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
                         img_prices = None if resolved_tag in (TAG_1_2, TAG_2_2) else note_prices
                         saved_images = self.save_product_images(order_code, data_dir, img_prices)
@@ -2006,4 +2014,3 @@ class OrderPage:
 
         _log(f"[CONFIRM] Order not found after pagination scan | order={order_code} | last_page={page_index}")
         return None, page_index
-
