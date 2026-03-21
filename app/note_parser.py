@@ -115,9 +115,6 @@ def extract_note_prices(
         if len(matches) == 1:
             raw_digits = matches[0].group(1)
             value = int(raw_digits)
-            # Normalize: if value >= 1000 (e.g. "185000" from "185.000"), divide
-            if value >= 1000:
-                value = value // 1000
             if value > 0:
                 tokens.append(value)
         # If 0 or 2+ matches → skip line (ambiguous or no price)

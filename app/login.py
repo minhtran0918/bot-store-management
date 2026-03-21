@@ -5,6 +5,7 @@ from pathlib import Path
 from time import monotonic
 
 from .auth import _load_saved_access_token, _seed_token_in_browser_storage
+from runtime.process_logger import log_console as _log
 
 LOGIN_WAIT_TIMEOUT_SECONDS = 300
 
@@ -84,15 +85,15 @@ def try_auto_login(page, config: dict) -> bool:
 	])
 
 	if not username_input or not password_input:
-		print("Auto-login: username/password input not found.")
+		_log("Auto-login: username/password input not found.")
 		return False
 
 	if not _fill_input(username_input, username):
-		print("Auto-login: failed to fill username.")
+		_log("Auto-login: failed to fill username.")
 		return False
 
 	if not _fill_input(password_input, password):
-		print("Auto-login: failed to fill password.")
+		_log("Auto-login: failed to fill password.")
 		return False
 
 	submit_button = _first_existing(page, [
@@ -107,7 +108,7 @@ def try_auto_login(page, config: dict) -> bool:
 		"text=Đăng nhập",
 	])
 	if not submit_button:
-		print("Auto-login: submit button not found.")
+		_log("Auto-login: submit button not found.")
 		return False
 
 	try:
@@ -217,12 +218,12 @@ def new_context(browser, session_file: Path):
 		try:
 			return browser.new_context(storage_state=str(session_file), viewport=_VIEWPORT)
 		except Exception as exc:
-			print(f"Session restore failed, fallback to new session: {exc}")
+			_log(f"Session restore failed, fallback to new session: {exc}")
 			_quarantine_bad_session(session_file)
 			return browser.new_context(viewport=_VIEWPORT)
 
 	if session_file.exists():
-		print("Session file is invalid or empty, starting with a fresh session.")
+		_log("Session file is invalid or empty, starting with a fresh session.")
 		_quarantine_bad_session(session_file)
 
 	return browser.new_context(viewport=_VIEWPORT)

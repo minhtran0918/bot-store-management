@@ -89,7 +89,8 @@ def build_exception_logger(error_dir: Path, error_log_file: Path, logger: Callab
         logger(f"[ERROR] {context}: {exc}")
         trace = traceback.format_exc().strip()
         if trace:
-            print(trace)
+            for line in trace.splitlines():
+                logger(line)
         append_error_log(error_dir, error_log_file, context, exc)
         logger(f"[ERROR] Error detail appended: {error_log_file.resolve()}")
 
@@ -124,7 +125,7 @@ def keep_browser_open_for_debug(
             logger("[SHUTDOWN] Skip keep-open: page is already closed")
             return
 
-        print(f"{reason}. Keeping browser open for {keep_open_seconds}s...")
+        logger(f"{reason}. Keeping browser open for {keep_open_seconds}s...")
         page.wait_for_timeout(keep_open_seconds * 1000)
     except Exception as exc:
         if is_target_closed_error(exc):

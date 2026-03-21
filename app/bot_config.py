@@ -129,6 +129,14 @@ class BotConfig:
             return 4
 
     @property
+    def comment_reply_max_retries(self) -> int:
+        """Number of extra retry attempts for comment reply on failure (0 = no retry)."""
+        try:
+            return max(0, int(self._bot.get("comment_reply_max_retries", 0)))
+        except (TypeError, ValueError):
+            return 0
+
+    @property
     def low_delivery_rate_pct(self) -> int:
         """Delivery success rate threshold (%). Below this → TAG 0 (skip). Default 60."""
         try:

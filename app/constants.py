@@ -45,7 +45,8 @@ STATUS_TO_TAG = {
 RECHECK_TAGS = {TAG_1_2, TAG_2_2}
 
 # Tags that indicate "tag only, no action" — orders with these tags are skipped for messaging
-TAG_ONLY_TAGS = {TAG_1_3, TAG_1_4, TAG_2_3, TAG_2_4}
+# NOTE: TAG_2_3 and TAG_2_4 are NOT included here because they still need MESS 1 (ask address)
+TAG_ONLY_TAGS = {TAG_1_3, TAG_1_4}
 
 # All valid tag values
 ORDER_TAG_VALUES = (TAG_0, TAG_1, TAG_1_1, TAG_1_2, TAG_1_3, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4, ERR)

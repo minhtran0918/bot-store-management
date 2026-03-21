@@ -9,6 +9,7 @@ bot:
   test_order_ids: []            # Only process these order codes (empty = process all). E.g. ["ORD001", "ORD002"]
   reload_every_n_orders: 4      # Reload page every N processed orders to free memory. Set to 0 to disable.
   low_delivery_rate_pct: 60     # Delivery success rate threshold (%). Below this → TAG 0 (skip). 0/0 = OK.
+  comment_reply_max_retries: 2  # Retry comment reply this many times on failure (0 = no retry).
 
 # ─── Feature flags ───────────────────────────────────────────────────────────
 features:

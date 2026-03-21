@@ -7,6 +7,8 @@ from email.utils import parsedate_to_datetime
 from hashlib import sha256
 from pathlib import Path
 
+from runtime.process_logger import log_console as _log
+
 
 def _extract_bearer_from_text(text: str) -> str | None:
     if not text:
@@ -206,7 +208,7 @@ def _load_saved_access_token(config: dict, base_dir: Path) -> tuple[str | None, 
 
     if _is_saved_token_expired(payload, token):
         _clear_saved_token_file(token_path)
-        print("Saved token is expired; token file was cleared.")
+        _log("Saved token is expired; token file was cleared.")
         return None, payload, "expired"
 
     return token, payload, "ok"

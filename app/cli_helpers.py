@@ -126,7 +126,8 @@ def prompt_price_code_mapping() -> dict[str, int | None]:
 def prompt_existing_csv_required(data_dir: Path) -> Path | None:
     csv_files = _list_existing_order_csv_files(data_dir)
     if not csv_files:
-        print("No existing orders CSV found. Please run collect_order first.")
+        from runtime.process_logger import log_console
+        log_console("No existing orders CSV found. Please run collect_order first.")
         return None
 
     choices = []

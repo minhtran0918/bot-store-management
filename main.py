@@ -56,7 +56,7 @@ def main():
     try:
         campaign_label = prompt_campaign_label()
     except ValueError as exc:
-        print(f"Input error: {exc}")
+        log_console(f"Input error: {exc}")
         return
 
     csv_output_path: Path | None = None
@@ -74,16 +74,16 @@ def main():
         try:
             confirm_order_codes = load_order_codes_from_csv(confirm_input_csv_path)
         except Exception as exc:
-            print(f"CSV input error: {exc}")
+            log_console(f"CSV input error: {exc}")
             return
         if not confirm_order_codes:
-            print(f"CSV input has no valid order codes: {confirm_input_csv_path}")
+            log_console(f"CSV input has no valid order codes: {confirm_input_csv_path}")
             return
 
     try:
         config = load_config(BASE_DIR / "config.yaml")
     except Exception as exc:
-        print(f"Config error: {exc}")
+        log_console(f"Config error: {exc}")
         return
 
     log_exception_trace = build_exception_logger(ERROR_DIR, ERROR_LOG_FILE, log_console)
@@ -118,11 +118,23 @@ def main():
             browser = p.chromium.launch(
                 headless=bool(config.get("headless", False)),
                 slow_mo=200,
-                args=[],
+                args=["--force-device-scale-factor=1"],
             )
             context = new_context(browser, SESSION_FILE)
             page = context.new_page()
-            page.evaluate("() => { window.moveTo(0,0); window.resizeTo(screen.availWidth, screen.availHeight); }")
+
+            # Detect Windows display scaling and adjust window to fill the screen.
+            # At 150% scaling, screen.availWidth returns CSS pixels (e.g. 1280 instead of 1920).
+            # We use these CSS values directly since Playwright operates in CSS pixels.
+            screen_info = page.evaluate("""() => {
+                const dpr = window.devicePixelRatio || 1;
+                const w = screen.availWidth;
+                const h = screen.availHeight;
+                window.moveTo(0, 0);
+                window.resizeTo(w, h);
+                return { width: w, height: h, dpr: dpr };
+            }""")
+            log_console(f"[SCREEN] {screen_info['width']}x{screen_info['height']} (scale={screen_info['dpr']}x)")
             bot_config = BotConfig(config)
             order_page = OrderPage(page, bot_config)
 

@@ -26,10 +26,7 @@ from .constants import (
 from .bot_config import BotConfig
 from .note_parser import extract_note_prices
 
-
-def _log(message: str) -> None:
-    ts = datetime.now().strftime("%H:%M:%S")
-    print(f"[{ts}] {message}", flush=True)
+from runtime.process_logger import log_console as _log
 
 
 _STROKE_MAP = str.maketrans({"Đ": "D", "đ": "d"})
@@ -617,15 +614,17 @@ class OrderPage:
         product_dir.mkdir(parents=True, exist_ok=True)
 
         items = self._extract_product_image_items_from_modal()
-        note_price_set = set(note_prices) if note_prices else None
+        note_price_counter = Counter(note_prices) if note_prices else None
         saved_paths: list[Path] = []
         total_size = 0
         skipped = 0
         for i, (url, product_name, price) in enumerate(items):
-            if note_price_set is not None and price not in note_price_set:
-                _log(f"  SKIP IMAGE: {product_name} (price={price} not in note)")
-                skipped += 1
-                continue
+            if note_price_counter is not None:
+                if note_price_counter.get(price, 0) <= 0:
+                    _log(f"  SKIP IMAGE: {product_name} (price={price} not in note)")
+                    skipped += 1
+                    continue
+                note_price_counter[price] -= 1
             safe_name = _remove_diacritics(product_name) or f"product_{i + 1}"
             file_name = f"{order_code}_{safe_name}.jpg"
             file_path = product_dir / file_name
@@ -1127,6 +1126,22 @@ class OrderPage:
             _log(f"  [!] Stack trace:\n{traceback.format_exc()}")
             return False
 
+    def _reply_comment_with_retry(self, partner_name: str, campaign_label: str = "") -> bool:
+        """Call _reply_comment_fallback with retry on failure (bot.comment_reply_max_retries)."""
+        max_retries = self._cfg.comment_reply_max_retries
+        for attempt in range(1, max_retries + 2):  # +2: 1 initial + max_retries extras
+            try:
+                ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
+            except Exception as exc:
+                _log(f"  [!] Comment reply attempt {attempt}/{max_retries + 1} error: {exc}")
+                ok = False
+            if ok:
+                return True
+            if attempt <= max_retries:
+                _log(f"  [!] Comment reply attempt {attempt}/{max_retries + 1} failed, retrying...")
+                self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
+        return False
+
     def _build_ask_address_message(self, partner_name: str = "") -> str:
         """MESS 1: Ask for address (no-address cases)."""
         template = random.choice(self._cfg.ask_address_templates)
@@ -1319,8 +1334,10 @@ class OrderPage:
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
                     # Save images for actionable tags (not tag-only 1.3/1.4/2.3/2.4)
+                    # For TAG 1.2/2.2 (no match): skip price filter so all product images are included
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
-                        saved_images = self.save_product_images(order_code, data_dir, note_prices)
+                        img_prices = None if resolved_tag in (TAG_1_2, TAG_2_2) else note_prices
+                        saved_images = self.save_product_images(order_code, data_dir, img_prices)
 
                     row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
                     row_data["Match_Product"] = match_label
@@ -1361,11 +1378,11 @@ class OrderPage:
                             self._wait_panel_ready()
 
                             partner_name = ""
-                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
+                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
                                 partner_name = self._read_partner_name()
 
-                            # MESS 1: ask address (TAG 2, 2.1, 2.2)
-                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2):
+                            # MESS 1: ask address (all no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
                                 ask_msg = self._build_ask_address_message(partner_name)
                                 self._send_in_panel(ask_msg, None, order_code)
 
@@ -1385,12 +1402,8 @@ class OrderPage:
 
                             # MESS 3: reply comment (TAG 1.1, 1.2, 2, 2.1, 2.2)
                             if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
-                                try:
-                                    comment_ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
-                                    row_data["Comment"] = "ok" if comment_ok else "send_fail"
-                                except Exception as exc:
-                                    row_data["Comment"] = "send_fail"
-                                    _log(f"  [!] Comment reply error: {exc}")
+                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
+                                row_data["Comment"] = "ok" if comment_ok else "send_fail"
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
 
                             self.page.keyboard.press("Escape")
@@ -1557,8 +1570,10 @@ class OrderPage:
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
                     # Save images for actionable tags (not tag-only 1.3/1.4/2.3/2.4)
+                    # For TAG 1.2/2.2 (no match): skip price filter so all product images are included
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
-                        saved_images = self.save_product_images(order_code, data_dir, note_prices)
+                        img_prices = None if resolved_tag in (TAG_1_2, TAG_2_2) else note_prices
+                        saved_images = self.save_product_images(order_code, data_dir, img_prices)
 
                     row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
                     row_data["Match_Product"] = match_label
@@ -1601,11 +1616,11 @@ class OrderPage:
                             self._wait_panel_ready()
 
                             partner_name = ""
-                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
+                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
                                 partner_name = self._read_partner_name()
 
-                            # MESS 1: ask address (TAG 2, 2.1, 2.2)
-                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2):
+                            # MESS 1: ask address (all no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
                                 ask_msg = self._build_ask_address_message(partner_name)
                                 self._send_in_panel(ask_msg, None, order_code)
 
@@ -1625,16 +1640,12 @@ class OrderPage:
 
                             # MESS 3: reply comment (TAG 1.1, 1.2, 2, 2.1, 2.2)
                             if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
-                                try:
-                                    comment_ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
-                                    row_data["Comment"] = "ok" if comment_ok else "send_fail"
-                                    if comment_ok:
-                                        _log(f"  COMMENT REPLY OK: order={order_code}")
-                                    else:
-                                        _log(f"  [!] COMMENT REPLY FAILED: order={order_code}")
-                                except Exception as exc:
-                                    row_data["Comment"] = "send_fail"
-                                    _log(f"  [!] Comment reply error: {exc}")
+                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
+                                row_data["Comment"] = "ok" if comment_ok else "send_fail"
+                                if comment_ok:
+                                    _log(f"  COMMENT REPLY OK: order={order_code}")
+                                else:
+                                    _log(f"  [!] COMMENT REPLY FAILED: order={order_code}")
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
 
                             self.page.keyboard.press("Escape")
