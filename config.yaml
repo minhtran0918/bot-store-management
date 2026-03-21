@@ -6,10 +6,14 @@ headless: false
 bot:
   test_max_collect_records: null   # Limit rows per run (for testing). Set to null for full run.
   max_images_per_send: 3        # Max images per message send (larger sets are split into batches).
+  test_order_ids: []            # Only process these order codes (empty = process all). E.g. ["ORD001", "ORD002"]
 
 # ─── Feature flags ───────────────────────────────────────────────────────────
 features:
   enable_comment_reply: true    # MESS 3: reply to FB comment. Disable when buggy.
+  enable_send_message: true     # MESS 1/2: send inbox text messages (ask address, deposit).
+  enable_send_product_image: true  # Send product images to customer.
+  enable_send_bill_image: true  # Send sales bill image (phiếu mua hàng) for TAG 1.
 
 # ─── Playwright timing (milliseconds) ────────────────────────────────────────
 timeouts:

@@ -112,6 +112,14 @@ class BotConfig:
         except (TypeError, ValueError):
             return 3
 
+    @property
+    def test_order_ids(self) -> list[str]:
+        """Whitelist of order codes to process. Empty list = process all."""
+        val = self._bot.get("test_order_ids")
+        if val and isinstance(val, list):
+            return [str(v).strip() for v in val if v]
+        return []
+
     # ------------------------------------------------------------------
     # Feature flags
     # ------------------------------------------------------------------
@@ -120,6 +128,21 @@ class BotConfig:
     def enable_comment_reply(self) -> bool:
         """MESS 3: reply to the customer's FB comment. Disable when the feature is buggy."""
         return bool(self._features.get("enable_comment_reply", False))
+
+    @property
+    def enable_send_message(self) -> bool:
+        """MESS 1/2: send inbox text messages (ask address, deposit)."""
+        return bool(self._features.get("enable_send_message", True))
+
+    @property
+    def enable_send_product_image(self) -> bool:
+        """Send product images to customer."""
+        return bool(self._features.get("enable_send_product_image", True))
+
+    @property
+    def enable_send_bill_image(self) -> bool:
+        """Send sales bill image (phiếu mua hàng) for TAG 1."""
+        return bool(self._features.get("enable_send_bill_image", True))
 
     # ------------------------------------------------------------------
     # Timeouts — Playwright click/wait timeouts (milliseconds)

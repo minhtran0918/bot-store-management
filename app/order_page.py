@@ -7,6 +7,7 @@ import shutil
 import time
 import traceback
 import unicodedata
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import Page, Locator
@@ -262,23 +263,26 @@ class OrderPage:
         return False
 
     def _click_send_button_reliable(self, order_code: str) -> None:
-        """Click the send button with retry logic to avoid miss clicks."""
-        max_attempts = 3
+        """Click the send button multiple times to ensure delivery."""
+        max_attempts = 2
         for attempt in range(1, max_attempts + 1):
             try:
                 send_btn = self.send_message_button()
-                # Scroll into view and wait for it to be stable
                 send_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
                 self.page.wait_for_timeout(200)
-                # Try normal click first (respects actionability), fall back to force
                 try:
                     send_btn.click(timeout=self._cfg.click_timeout)
                 except Exception:
                     send_btn.click(timeout=self._cfg.click_timeout, force=True)
-                # Verify content was actually sent (panel should be empty after)
                 self.page.wait_for_timeout(500)
                 if not self._has_pending_content_in_panel():
-                    return  # success — content was sent
+                    # Content sent — click once more as safety tap
+                    try:
+                        send_btn = self.send_message_button()
+                        send_btn.click(timeout=self._cfg.click_timeout, force=True)
+                    except Exception:
+                        pass  # button may be gone/disabled after successful send
+                    return
                 _log(f"  [!] Send attempt {attempt}/{max_attempts}: content still in panel, retrying...")
             except Exception as exc:
                 _log(f"  [!] Send attempt {attempt}/{max_attempts} error: {exc}")
@@ -737,10 +741,15 @@ class OrderPage:
             _log(f"  OOS: forecast_stocks={forecast_stocks}")
             return have_address, 0, total_products, tag, note_prices
 
-        # Match note prices against product prices (set-based matching)
-        note_price_set = set(note_prices)
-        product_price_set = set(product_prices)
-        matched_count = len(note_price_set & product_price_set) if note_prices and product_prices else 0
+        # Match note prices against product prices (quantity-based matching)
+        # E.g. products=[158, 158, 123] note=[158, 158, 123] → matched=3
+        if note_prices and product_prices:
+            product_counter = Counter(product_prices)
+            note_counter = Counter(note_prices)
+            matched_count = sum(min(product_counter[p], note_counter[p]) for p in product_counter if p in note_counter)
+        else:
+            matched_count = 0
+        _log(f"  PRODUCTS={product_prices} NOTE_PRICES={note_prices} MATCHED={matched_count}/{len(product_prices)}")
 
         # Tag logic — 6 cases
         if have_address:
@@ -1103,7 +1112,10 @@ class OrderPage:
         error_count = 0
         enrich_start = time.time()
 
+        whitelist = set(self._cfg.test_order_ids)
         _log(f"SINGLE-PASS started: rows={count} on page={page_index}")
+        if whitelist:
+            _log(f"WHITELIST mode: only processing {len(whitelist)} order(s): {', '.join(whitelist)}")
         if expected_total is not None:
             _log(f"Expected total from tab count={expected_total}")
 
@@ -1136,6 +1148,11 @@ class OrderPage:
                     continue
 
                 seen_codes.add(order_code)
+
+                # Whitelist filter: if set, only process listed order codes
+                if whitelist and order_code not in whitelist:
+                    i += 1
+                    continue
 
                 # Check tag: must be empty (no tag)
                 tags = self._tag_values_in_order_cell(order_cell)
@@ -1267,21 +1284,21 @@ class OrderPage:
                                 partner_name = self._read_partner_name()
 
                             # MESS 1: ask address (TAG 2, 2.1, 2.2)
-                            if resolved_tag in (TAG_2, TAG_2_1, TAG_2_2):
+                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2):
                                 ask_msg = self._build_ask_address_message(partner_name)
                                 self._send_in_panel(ask_msg, None, order_code)
 
                             # IMAGE: send product images separately (all tags except tag-only)
-                            if saved_images:
+                            if self._cfg.enable_send_product_image and saved_images:
                                 self._send_batched_in_open_panel("", saved_images, order_code)
 
                             # BILL: send bill image (TAG 1 only)
-                            if resolved_tag == TAG_1 and bill_created:
+                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
                                 self._send_bill_image_in_panel(order_code)
                                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
                             # MESS 2: deposit message (TAG 1.1, 2.1)
-                            if resolved_tag in (TAG_1_1, TAG_2_1):
+                            if self._cfg.enable_send_message and resolved_tag in (TAG_1_1, TAG_2_1):
                                 deposit_msg = self._build_deposit_message(partner_name)
                                 self._send_in_panel(deposit_msg, None, order_code)
 
@@ -1358,16 +1375,21 @@ class OrderPage:
 
     def enrich_collected_rows(self, rows_data: list[dict[str, str]], data_dir: Path | None = None, campaign_label: str = "", price_code_mapping: dict[str, int | None] | None = None) -> tuple[int, int, int]:
         # Build lookup: order_code -> row_data (only orders with no tag)
+        whitelist = set(self._cfg.test_order_ids)
         qualify_lookup: dict[str, dict[str, str]] = {}
         for r in rows_data:
             code = str(r.get("Order_Code", "")).strip()
             tag = str(r.get("Tag", "")).strip()
             if code and not tag:
+                if whitelist and code not in whitelist:
+                    continue
                 qualify_lookup[code] = r
 
         total = len(qualify_lookup)
         skipped_existing = len(rows_data) - total
         _log("=" * 60)
+        if whitelist:
+            _log(f"WHITELIST mode: only processing {len(whitelist)} order(s): {', '.join(whitelist)}")
         _log(f"ENRICH: {total} qualifying orders (no tag) | skipped {skipped_existing} with tags")
         _log("=" * 60)
 
@@ -1477,21 +1499,21 @@ class OrderPage:
                                 partner_name = self._read_partner_name()
 
                             # MESS 1: ask address (TAG 2, 2.1, 2.2)
-                            if resolved_tag in (TAG_2, TAG_2_1, TAG_2_2):
+                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2):
                                 ask_msg = self._build_ask_address_message(partner_name)
                                 self._send_in_panel(ask_msg, None, order_code)
 
                             # IMAGE: send product images separately
-                            if saved_images:
+                            if self._cfg.enable_send_product_image and saved_images:
                                 self._send_batched_in_open_panel("", saved_images, order_code)
 
                             # BILL: send bill image (TAG 1 only)
-                            if resolved_tag == TAG_1 and bill_created:
+                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
                                 self._send_bill_image_in_panel(order_code)
                                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
                             # MESS 2: deposit message (TAG 1.1, 2.1)
-                            if resolved_tag in (TAG_1_1, TAG_2_1):
+                            if self._cfg.enable_send_message and resolved_tag in (TAG_1_1, TAG_2_1):
                                 deposit_msg = self._build_deposit_message(partner_name)
                                 self._send_in_panel(deposit_msg, None, order_code)
 
@@ -1676,6 +1698,11 @@ class OrderPage:
             code_span = order_cell.locator("span").first
             order_code = code_span.inner_text().strip() if code_span.count() > 0 else order_cell.inner_text().strip()
             if not order_code or order_code in existing_codes:
+                continue
+
+            # Whitelist filter: if set, only collect listed order codes
+            whitelist = set(self._cfg.test_order_ids)
+            if whitelist and order_code not in whitelist:
                 continue
 
             # Check tag: must be empty (no tag)

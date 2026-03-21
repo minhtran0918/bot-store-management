@@ -102,9 +102,9 @@ class TestExtractNotePrices(unittest.TestCase):
     def test_code_not_partial_match(self):
         """A1 should not match inside 'BA1' or 'A10'."""
         mapping = {"A1": 150}
-        result = extract_note_prices("BA1 A10 A1", mapping)
+        result = extract_note_prices("BA1\nA10\nA1", mapping)
         # Only the standalone A1 should be replaced
-        self.assertIn(150, result)
+        self.assertEqual(result, [10, 150])
 
     # --- Edge cases ---
 
@@ -186,9 +186,9 @@ class TestExtractNotePrices(unittest.TestCase):
         self.assertEqual(result, [])
 
     def test_weight_kg_excluded(self):
-        """'49kg' is a weight, not a price."""
+        """'49kg' is a weight, not a price. Two remaining prices → ambiguous."""
         result = extract_note_prices("162 158 49kg")
-        self.assertEqual(result, [162, 158])
+        self.assertEqual(result, [])
 
     def test_k_suffix_not_kg(self):
         """'185k' is a price (k=thousands), '49kg' is a weight."""
@@ -254,28 +254,28 @@ class TestExtractNotePrices(unittest.TestCase):
         result = extract_note_prices("A10", {"A1": 170})
         self.assertNotIn(170, result)
 
-    def test_a170_not_a1(self):
-        """A170 should not match A1 — the '70' after A1 is not a phone."""
+    def test_a170_matches_a1(self):
+        """A170 → A1 detected (70 is 2-digit suffix), A-code's mapped price used."""
         result = extract_note_prices("A170 0868587668", {"A1": 170})
-        # A1 should NOT match (170 is extracted as standalone number)
         self.assertIn(170, result)
         self.assertEqual(len(result), 1)
 
-    # --- Deduplication ---
+    # --- One price per line (quantity matching) ---
 
-    def test_code_plus_explicit_price_deduplicated(self):
-        """'A1 170' with A1→170 should return [170], not [170, 170]."""
+    def test_code_plus_explicit_price_same_line(self):
+        """'A1 170' on one line → 1 product, first price only."""
         result = extract_note_prices("A1 170", {"A1": 170})
         self.assertEqual(result, [170])
 
-    def test_a2_plus_explicit_price_deduplicated(self):
+    def test_a2_plus_explicit_price_same_line(self):
+        """'A2 190 dt' on one line → 1 product, first price only."""
         result = extract_note_prices("A2 190 dt 0379420187", {"A2": 190})
         self.assertEqual(result, [190])
 
-    def test_repeated_price_deduplicated(self):
-        """Same price on multiple lines should appear once."""
+    def test_repeated_price_preserved(self):
+        """Same price on multiple lines should appear multiple times."""
         result = extract_note_prices("133\n133")
-        self.assertEqual(result, [133])
+        self.assertEqual(result, [133, 133])
 
     # --- Size / text suffixes ---
 
@@ -351,7 +351,7 @@ class TestExtractNotePrices(unittest.TestCase):
         self.assertEqual(sorted(result), [118, 133, 199])
 
     def test_real_a1_explicit_170(self):
-        """'A1 170 0374101059' — A1 maps to 170, explicit 170 should be deduplicated."""
+        """'A1 170 0374101059' — single line, 1 product."""
         mapping = {"A1": 170}
         result = extract_note_prices("A1 170 0374101059", mapping)
         self.assertEqual(result, [170])
@@ -372,14 +372,160 @@ class TestExtractNotePrices(unittest.TestCase):
     def test_real_a2_in_note(self):
         mapping = {"A2": 190}
         result = extract_note_prices("165\nA2\n165", mapping)
-        self.assertIn(165, result)
-        self.assertIn(190, result)
-        self.assertEqual(len(result), 2)  # 165 deduplicated
+        self.assertEqual(result, [165, 190, 165])  # duplicates preserved
 
     def test_real_tri_an_prices(self):
         result = extract_note_prices("tri ân 98\n124")
         self.assertEqual(sorted(result), [98, 124])
 
+    # --- Per-line extraction (1 line = 1 product) ---
+
+    def test_one_price_per_line(self):
+        """Multiple prices on one line → ambiguous, extract nothing for that line."""
+        result = extract_note_prices("103 0933398421\n123 dsqw 173k 158\n123+158\n158")
+        self.assertEqual(result, [103, 158])
+
+    def test_full_match_7_lines(self):
+        """7 lines = 7 products, each line has one price."""
+        note = "103 0933398421\n123 dsqw\n123+\n173k\n158\n158\n158"
+        result = extract_note_prices(note)
+        self.assertEqual(result, [103, 123, 123, 173, 158, 158, 158])
+
+    def test_line_count_matters_not_total_prices(self):
+        """Line with 3 numbers (no A-code) → ambiguous, extract nothing."""
+        result = extract_note_prices("185 133 170")
+        self.assertEqual(result, [])
+
+
+    # --- Two-price ambiguity (extract nothing) ---
+
+    def test_two_prices_ambiguous(self):
+        """'185+ 164. 0972363927' → 2 prices (185, 164), ambiguous → []."""
+        result = extract_note_prices("185+ 164. 0972363927")
+        self.assertEqual(result, [])
+
+    def test_two_prices_with_text(self):
+        """'185 ao trang quan zin 158 49kg 0918936227' → 2 prices (185, 158), ambiguous."""
+        result = extract_note_prices("185 ao trang quan zin 158 49kg 0918936227")
+        self.assertEqual(result, [])
+
+    # --- A-code wins over explicit price ---
+
+    def test_a2_wins_over_explicit_185(self):
+        """'A2185/0335729742' → A2 detected, A2's mapped price used, 185 ignored."""
+        result = extract_note_prices("A2185/0335729742", {"A2": 190})
+        self.assertEqual(result, [190])
+
+    def test_a1_wins_over_slash_185(self):
+        """'A1/185 0989898043' → A1 detected, A1's mapped price used."""
+        result = extract_note_prices("A1/185 0989898043", {"A1": 170})
+        self.assertEqual(result, [170])
+
+    def test_a1_wins_over_gia_185k(self):
+        """'A1 giá 185k sđt 0332677603' → A1 detected, mapped price wins."""
+        result = extract_note_prices("A1 giá 185k sđt 0332677603", {"A1": 170})
+        self.assertEqual(result, [170])
+
+    def test_a2_wins_over_dot_185(self):
+        """'A2.185' → A2 detected, mapped price wins."""
+        result = extract_note_prices("A2.185", {"A2": 190})
+        self.assertEqual(result, [190])
+
+    def test_a1_wins_over_space_dot_185(self):
+        """'A1 .185 .0389026248' → A1 detected, mapped price wins."""
+        result = extract_note_prices("A1 .185 .0389026248", {"A1": 170})
+        self.assertEqual(result, [170])
+
+    def test_a1_wins_over_explicit_185(self):
+        """'A1 185 0374101059' → A1 detected, mapped price wins."""
+        result = extract_note_prices("A1 185 0374101059", {"A1": 170})
+        self.assertEqual(result, [170])
+
+    # --- Special A-code detection ---
+
+    def test_a185_detects_a1(self):
+        """'A185 0868587668' → A1 detected (A + 1 + 2-digit suffix 85)."""
+        result = extract_note_prices("A185 0868587668", {"A1": 170})
+        self.assertEqual(result, [170])
+
+    def test_a117_detects_a1(self):
+        """'A117/0978971998' → A1 detected (A + 1 + 2-digit suffix 17)."""
+        result = extract_note_prices("A117/0978971998", {"A1": 170})
+        self.assertEqual(result, [170])
+
+    def test_a1_jean(self):
+        """'a1 jean' → A1 detected (case insensitive, text suffix)."""
+        result = extract_note_prices("a1 jean", {"A1": 170})
+        self.assertEqual(result, [170])
+
+    def test_a2_kem_full_text(self):
+        """'A 2 kem..ren kem đơn...e nhé' → A2 detected with space."""
+        result = extract_note_prices("A 2 kem..ren kem đơn...e nhé", {"A2": 190})
+        self.assertEqual(result, [190])
+
+    # --- New separator / phone patterns ---
+
+    def test_price_with_k_and_phone(self):
+        """'185k 0968796393' → 185."""
+        result = extract_note_prices("185k 0968796393")
+        self.assertEqual(result, [185])
+
+    def test_phone_dot_space_price(self):
+        """'0898931929. 185' → 185."""
+        result = extract_note_prices("0898931929. 185")
+        self.assertEqual(result, [185])
+
+    def test_voi_prefix(self):
+        """'Với 185 đầm trắng' → 185."""
+        result = extract_note_prices("Với 185 đầm trắng")
+        self.assertEqual(result, [185])
+
+    def test_price_space_phone(self):
+        """'185 0386870095' → 185."""
+        result = extract_note_prices("185 0386870095")
+        self.assertEqual(result, [185])
+
+    def test_price_dash_phone(self):
+        """'160-0938087170' → 160."""
+        result = extract_note_prices("160-0938087170")
+        self.assertEqual(result, [160])
+
+    def test_price_space_slash_phone(self):
+        """'185 /0374752624' → 185."""
+        result = extract_note_prices("185 /0374752624")
+        self.assertEqual(result, [185])
+
+    def test_price_dash_text_phone(self):
+        """'185- váy trắng 0395822203' → 185."""
+        result = extract_note_prices("185- váy trắng 0395822203")
+        self.assertEqual(result, [185])
+
+    def test_price_comma_phone(self):
+        """'185, 0353407957' → 185."""
+        result = extract_note_prices("185, 0353407957")
+        self.assertEqual(result, [185])
+
+    def test_price_text_kem(self):
+        """'Chấm bi kem 185 0366408205' → 185."""
+        result = extract_note_prices("Chấm bi kem 185 0366408205")
+        self.assertEqual(result, [185])
+
+    def test_price_dash_phone_no_space(self):
+        """'185-0948676491' → 185."""
+        result = extract_note_prices("185-0948676491")
+        self.assertEqual(result, [185])
+
+    def test_price_dot_phone_no_space(self):
+        """'185.0328019689' → 185 (dot-separated phone removed)."""
+        result = extract_note_prices("185.0328019689")
+        self.assertEqual(result, [185])
+
+    def test_price_at_phone(self):
+        """'185 @0905836873' → 185."""
+        result = extract_note_prices("185 @0905836873")
+        self.assertEqual(result, [185])
+
 
 if __name__ == "__main__":
     unittest.main()
+
