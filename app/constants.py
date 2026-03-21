@@ -45,8 +45,12 @@ STATUS_TO_TAG = {
 RECHECK_TAGS = {TAG_1_2, TAG_2_2}
 
 # Tags that indicate "tag only, no action" — orders with these tags are skipped for messaging
-# NOTE: TAG_2_3 and TAG_2_4 are NOT included here because they still need MESS 1 (ask address)
-TAG_ONLY_TAGS = {TAG_1_3, TAG_1_4}
+# NOTE: TAG_1_4 and TAG_2_4 are NOT included here because they now send OOS notification + images
+# NOTE: TAG_2_3 is NOT included here because it still needs MESS 1 (ask address)
+TAG_ONLY_TAGS = {TAG_1_3}
+
+# Tags that indicate out-of-stock — need OOS notification message
+OOS_TAGS = {TAG_1_4, TAG_2_4}
 
 # All valid tag values
 ORDER_TAG_VALUES = (TAG_0, TAG_1, TAG_1_1, TAG_1_2, TAG_1_3, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4, ERR)

@@ -122,11 +122,11 @@ def load_config(path: Path | str = "config.yaml") -> dict:
     messages_out: dict = {
         "ask_address": str(messages.get("ask_address", "")).strip(),
     }
-    for tpl_key in ("ask_address_templates", "comment_fallback_templates"):
+    for tpl_key in ("ask_address_templates", "comment_fallback_templates", "oos_templates"):
         val = messages.get(tpl_key)
         if isinstance(val, list):
             messages_out[tpl_key] = [str(s) for s in val]
-    for tpl_key in ("deposit_template",):
+    for tpl_key in ("deposit_template", "oos_line_format"):
         val = messages.get(tpl_key)
         if isinstance(val, str):
             messages_out[tpl_key] = val

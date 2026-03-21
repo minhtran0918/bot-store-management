@@ -15,7 +15,7 @@ from PIL import Image
 import re
 
 from .constants import (
-    ERR, TAG_ONLY_TAGS, STATUS_TO_TAG,
+    ERR, TAG_ONLY_TAGS, OOS_TAGS, STATUS_TO_TAG,
     TAG_0, TAG_1, TAG_1_1, TAG_1_2, TAG_1_3, TAG_1_4,
     TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4,
     HAVE_ADDR_LOW_SP, HAVE_ADDR_HIGH_SP, HAVE_ADDR_NO_SP,
@@ -64,6 +64,8 @@ def _build_match_label(matched_count: int, total_products: int, resolved_tag: st
     """Build a human-readable match summary for logs/CSV."""
     if total_products <= 0:
         return "NO PRODUCT (0/0)"
+    if resolved_tag in (TAG_1_4, TAG_2_4):
+        return f"OOS ({matched_count}/{total_products})"
     if resolved_tag in (TAG_1_2, TAG_2_2):
         if matched_count == 0:
             return f"NO MATCH (0/{total_products})"
@@ -634,7 +636,17 @@ class OrderPage:
             _log(f"  [!] Image error: {exc}")
             return False
 
-    def save_product_images(self, order_code: str, data_dir: Path, note_prices: list[int] | None = None) -> list[Path]:
+    def save_product_images(
+        self, order_code: str, data_dir: Path,
+        note_prices: list[int] | None = None,
+        oos_prices: list[int] | None = None,
+    ) -> list[Path]:
+        """Save product images, optionally filtering by note prices and excluding OOS products.
+
+        Args:
+            note_prices: When set, only save images for products whose price appears in this list.
+            oos_prices: When set, skip images for products whose price appears in this list (OOS).
+        """
         product_dir = data_dir / "product" / order_code
         if product_dir.exists():
             shutil.rmtree(product_dir)
@@ -643,10 +655,18 @@ class OrderPage:
 
         items = self._extract_product_image_items_from_modal()
         note_price_counter = Counter(note_prices) if note_prices else None
+        oos_price_counter = Counter(oos_prices) if oos_prices else None
         saved_paths: list[Path] = []
         total_size = 0
         skipped = 0
         for i, (url, product_name, price) in enumerate(items):
+            # Skip OOS products
+            if oos_price_counter is not None:
+                if oos_price_counter.get(price, 0) > 0:
+                    _log(f"  SKIP IMAGE (OOS): {product_name} (price={price})")
+                    oos_price_counter[price] -= 1
+                    skipped += 1
+                    continue
             if note_price_counter is not None:
                 if note_price_counter.get(price, 0) <= 0:
                     _log(f"  SKIP IMAGE: {product_name} (price={price} not in note)")
@@ -792,8 +812,12 @@ class OrderPage:
     def _evaluate_modal_address_and_product(
         self,
         price_code_mapping: dict[str, int | None] | None = None,
-    ) -> tuple[bool, int, int, str, list[int]]:
-        """Returns (have_address, matched_count, total_products, tag, note_prices)."""
+    ) -> tuple[bool, int, int, str, list[int], list[dict]]:
+        """Returns (have_address, matched_count, total_products, tag, note_prices, oos_products).
+
+        oos_products: list of {"name": str, "price": int, "forecast": int} for OOS items.
+        Empty list when no OOS products detected.
+        """
         address_text = self._read_modal_address()
         have_address = bool(address_text)
 
@@ -807,15 +831,7 @@ class OrderPage:
         if total_products == 0:
             status = HAVE_ADDR_NO_PROD if have_address else NO_ADDR_NO_PROD
             tag = STATUS_TO_TAG[status]
-            return have_address, 0, total_products, tag, note_prices
-
-        # Check: any product has Tồn dự báo <= 0 (out of stock)
-        forecast_stocks = self._extract_forecast_stock_from_modal()
-        if forecast_stocks and any(f <= 0 for f in forecast_stocks):
-            status = HAVE_ADDR_OOS if have_address else NO_ADDR_OOS
-            tag = STATUS_TO_TAG[status]
-            _log(f"  OOS: forecast_stocks={forecast_stocks}")
-            return have_address, 0, total_products, tag, note_prices
+            return have_address, 0, total_products, tag, note_prices, []
 
         # Match note prices against product prices (quantity-based matching)
         # Exact multiset equality is required before the order is treated as a
@@ -833,8 +849,32 @@ class OrderPage:
             f"MATCHED={matched_count}/{len(product_prices)} EXACT={'Y' if exact_match else 'N'}"
         )
 
+        # Check OOS (Tồn dự báo <= 0) AFTER matching
+        # Only assign OOS tag (1.4/2.4) when products matched; otherwise stay as mismatch (1.2/2.2)
+        forecast_stocks = self._extract_forecast_stock_from_modal()
+        oos_products: list[dict] = []
+        if forecast_stocks:
+            image_items = self._extract_product_image_items_from_modal()
+            for idx, fs in enumerate(forecast_stocks):
+                if fs <= 0:
+                    raw_name = image_items[idx][1] if idx < len(image_items) else f"product_{idx + 1}"
+                    # Extract short code from brackets: "[T02 XANH] T02 (Xanh)" -> "T02 XANH"
+                    bracket_match = re.match(r"\[([^\]]+)\]", raw_name)
+                    name = bracket_match.group(1) if bracket_match else raw_name
+                    price = product_prices[idx] if idx < len(product_prices) else 0
+                    oos_products.append({"name": name, "price": price, "forecast": fs})
+
+        if oos_products:
+            _log(f"  OOS: forecast_stocks={forecast_stocks} oos_count={len(oos_products)}/{total_products}")
+            if exact_match:
+                # Products matched but some are OOS → TAG 1.4/2.4
+                status = HAVE_ADDR_OOS if have_address else NO_ADDR_OOS
+                tag = STATUS_TO_TAG[status]
+                return have_address, matched_count, total_products, tag, note_prices, oos_products
+            # Products don't match → TAG 1.2/2.2 (mismatch takes priority, but carry OOS info)
+
         tag = _resolve_product_match_tag(have_address, total_products, exact_match)
-        return have_address, matched_count, total_products, tag, note_prices
+        return have_address, matched_count, total_products, tag, note_prices, oos_products
 
     def _close_edit_modal_safely(self) -> None:
         try:
@@ -1233,6 +1273,17 @@ class OrderPage:
         name = partner_name or "bạn"
         return self._cfg.deposit_template.format(name=name)
 
+    def _build_oos_message(self, oos_products: list[dict], partner_name: str = "") -> str:
+        """Build OOS notification message listing out-of-stock products."""
+        name = partner_name or "bạn"
+        line_fmt = self._cfg.oos_line_format
+        oos_lines = "\n".join(
+            line_fmt.format(price=p['price'], name=p['name'], forecast=p['forecast'])
+            for p in oos_products
+        )
+        template = random.choice(self._cfg.oos_templates)
+        return template.format(name=name, oos_lines=oos_lines)
+
     def collect_and_enrich_single_pass(
         self,
         csv_writer,
@@ -1423,18 +1474,33 @@ class OrderPage:
                             break
                         continue
 
-                    have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product(price_code_mapping)
+                    have_address, matched_count, total_products, resolved_tag, note_prices, oos_products = self._evaluate_modal_address_and_product(price_code_mapping)
 
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
 
                     match_label = _build_match_label(matched_count, total_products, resolved_tag)
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
-                    # Save images for actionable tags (not tag-only 1.3/1.4/2.3/2.4)
-                    # For TAG 1.2/2.2 (mismatch): skip price filter so all product images are included
+                    # OOS summary
+                    in_stock_count = total_products - len(oos_products)
+                    if oos_products:
+                        oos_names = ", ".join(f"{p['name']}({p['price']})" for p in oos_products)
+                        _log(f"  CHECK OOS -> {len(oos_products)} hết hàng, {in_stock_count} còn hàng | OOS: {oos_names}")
+
+                    # Save images for actionable tags (not tag-only 1.3)
+                    # OOS tags (1.4/2.4): send only in-stock product images
+                    # Mismatch tags (1.2/2.2): send only in-stock product images (skip OOS)
+                    # Normal tags: filter by note_prices
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
-                        img_prices = None if resolved_tag in (TAG_1_2, TAG_2_2) else note_prices
-                        saved_images = self.save_product_images(order_code, data_dir, img_prices)
+                        oos_price_list = [p["price"] for p in oos_products] if oos_products else None
+                        if resolved_tag in OOS_TAGS:
+                            # OOS tags: no note_prices filter, just exclude OOS
+                            saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
+                        elif resolved_tag in (TAG_1_2, TAG_2_2):
+                            # Mismatch: no note_prices filter, exclude OOS products
+                            saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
+                        else:
+                            saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
                     row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
                     row_data["Match_Product"] = match_label
@@ -1461,7 +1527,7 @@ class OrderPage:
                     tag_counts[resolved_tag] = tag_counts.get(resolved_tag, 0) + 1
 
                     # Send messages per tag
-                    # 1.3/1.4/2.3/2.4 → tag only, no messages
+                    # 1.3 → tag only, no messages
                     if resolved_tag in TAG_ONLY_TAGS:
                         _log(f"  SKIP MSG: tag-only tag={resolved_tag}")
                     else:
@@ -1475,11 +1541,14 @@ class OrderPage:
                             self._wait_panel_ready()
 
                             partner_name = ""
-                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
+                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
                                 partner_name = self._read_partner_name()
 
-                            # IMAGE: send product images first
-                            if self._cfg.enable_send_product_image and saved_images:
+                            # IMAGE: send product images first (in-stock only for OOS/mismatch tags)
+                            if resolved_tag in OOS_TAGS:
+                                if self._cfg.enable_send_oos_image and saved_images:
+                                    self._send_batched_in_open_panel("", saved_images, order_code)
+                            elif self._cfg.enable_send_product_image and saved_images:
                                 self._send_batched_in_open_panel("", saved_images, order_code)
 
                             # BILL: send bill image before follow-up texts
@@ -1487,18 +1556,31 @@ class OrderPage:
                                 self._send_bill_image_in_panel(order_code)
                                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
-                            # MESS 1: ask address after images (all no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
-                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
-                                ask_msg = self._build_ask_address_message(partner_name)
-                                self._send_in_panel(ask_msg, None, order_code)
+                            # OOS MSG: send OOS notification (TAG 1.4, 2.4)
+                            if self._cfg.enable_send_oos_message and resolved_tag in OOS_TAGS and oos_products:
+                                oos_msg = self._build_oos_message(oos_products, partner_name)
+                                self._send_in_panel(oos_msg, None, order_code)
+
+                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.3)
+                            # For TAG 2.2: only ask if there are in-stock products
+                            # For TAG 2.4: only ask if there are in-stock products
+                            if self._cfg.enable_send_message:
+                                if resolved_tag in (TAG_2, TAG_2_1, TAG_2_3):
+                                    ask_msg = self._build_ask_address_message(partner_name)
+                                    self._send_in_panel(ask_msg, None, order_code)
+                                elif resolved_tag in (TAG_2_2, TAG_2_4) and in_stock_count > 0:
+                                    ask_msg = self._build_ask_address_message(partner_name)
+                                    self._send_in_panel(ask_msg, None, order_code)
+                                elif resolved_tag in (TAG_2_2, TAG_2_4):
+                                    _log(f"  SKIP MESS 1: all products OOS, no point asking address")
 
                             # MESS 2: deposit message (TAG 1.1, 2.1)
                             if self._cfg.enable_send_message and resolved_tag in (TAG_1_1, TAG_2_1):
                                 deposit_msg = self._build_deposit_message(partner_name)
                                 self._send_in_panel(deposit_msg, None, order_code)
 
-                            # MESS 3: reply comment (TAG 1.1, 1.2, 2, 2.1, 2.2)
-                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
+                            # MESS 3: reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
                                 comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
@@ -1509,7 +1591,8 @@ class OrderPage:
                             _log(f"  [!] Row not found for sending: {order_code}")
 
                     order_elapsed = time.time() - order_start
-                    _log(f"  DONE ORDER = {order_code} | STT = {processed} | TAG = {resolved_tag} | MATCH = {matched_count}/{total_products} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                    oos_label = f" | OOS = {len(oos_products)}/{total_products}" if oos_products else ""
+                    _log(f"  DONE ORDER = {order_code} | STT = {processed} | TAG = {resolved_tag} | MATCH = {matched_count}/{total_products}{oos_label} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
 
                 except Exception as exc:
                     row_data["Tag"] = ERR
@@ -1673,7 +1756,7 @@ class OrderPage:
                         _log(f"  DONE ORDER = {order_code} | STT = {processed}/{total} | TAG = 0 | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
                         continue
 
-                    have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product(price_code_mapping)
+                    have_address, matched_count, total_products, resolved_tag, note_prices, oos_products = self._evaluate_modal_address_and_product(price_code_mapping)
 
                     # Step 1: CHECK ADDRESS
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
@@ -1682,11 +1765,24 @@ class OrderPage:
                     match_label = _build_match_label(matched_count, total_products, resolved_tag)
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
-                    # Save images for actionable tags (not tag-only 1.3/1.4/2.3/2.4)
-                    # For TAG 1.2/2.2 (mismatch): skip price filter so all product images are included
+                    # OOS summary
+                    in_stock_count = total_products - len(oos_products)
+                    if oos_products:
+                        oos_names = ", ".join(f"{p['name']}({p['price']})" for p in oos_products)
+                        _log(f"  CHECK OOS -> {len(oos_products)} hết hàng, {in_stock_count} còn hàng | OOS: {oos_names}")
+
+                    # Save images for actionable tags (not tag-only 1.3)
+                    # OOS tags (1.4/2.4): send only in-stock product images
+                    # Mismatch tags (1.2/2.2): send only in-stock product images (skip OOS)
+                    # Normal tags: filter by note_prices
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
-                        img_prices = None if resolved_tag in (TAG_1_2, TAG_2_2) else note_prices
-                        saved_images = self.save_product_images(order_code, data_dir, img_prices)
+                        oos_price_list = [p["price"] for p in oos_products] if oos_products else None
+                        if resolved_tag in OOS_TAGS:
+                            saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
+                        elif resolved_tag in (TAG_1_2, TAG_2_2):
+                            saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
+                        else:
+                            saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
                     row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
                     row_data["Match_Product"] = match_label
@@ -1715,7 +1811,7 @@ class OrderPage:
                     tag_counts[resolved_tag] = tag_counts.get(resolved_tag, 0) + 1
 
                     # Send messages per tag
-                    # 1.3/1.4/2.3/2.4 → tag only, no messages
+                    # 1.3 → tag only, no messages
                     if resolved_tag in TAG_ONLY_TAGS:
                         _log(f"  SKIP MSG: tag-only tag={resolved_tag}")
                     else:
@@ -1729,11 +1825,14 @@ class OrderPage:
                             self._wait_panel_ready()
 
                             partner_name = ""
-                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
+                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
                                 partner_name = self._read_partner_name()
 
-                            # IMAGE: send product images first
-                            if self._cfg.enable_send_product_image and saved_images:
+                            # IMAGE: send product images first (in-stock only for OOS/mismatch tags)
+                            if resolved_tag in OOS_TAGS:
+                                if self._cfg.enable_send_oos_image and saved_images:
+                                    self._send_batched_in_open_panel("", saved_images, order_code)
+                            elif self._cfg.enable_send_product_image and saved_images:
                                 self._send_batched_in_open_panel("", saved_images, order_code)
 
                             # BILL: send bill image before follow-up texts
@@ -1741,18 +1840,31 @@ class OrderPage:
                                 self._send_bill_image_in_panel(order_code)
                                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
-                            # MESS 1: ask address after images (all no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
-                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
-                                ask_msg = self._build_ask_address_message(partner_name)
-                                self._send_in_panel(ask_msg, None, order_code)
+                            # OOS MSG: send OOS notification (TAG 1.4, 2.4)
+                            if self._cfg.enable_send_oos_message and resolved_tag in OOS_TAGS and oos_products:
+                                oos_msg = self._build_oos_message(oos_products, partner_name)
+                                self._send_in_panel(oos_msg, None, order_code)
+
+                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.3)
+                            # For TAG 2.2: only ask if there are in-stock products
+                            # For TAG 2.4: only ask if there are in-stock products
+                            if self._cfg.enable_send_message:
+                                if resolved_tag in (TAG_2, TAG_2_1, TAG_2_3):
+                                    ask_msg = self._build_ask_address_message(partner_name)
+                                    self._send_in_panel(ask_msg, None, order_code)
+                                elif resolved_tag in (TAG_2_2, TAG_2_4) and in_stock_count > 0:
+                                    ask_msg = self._build_ask_address_message(partner_name)
+                                    self._send_in_panel(ask_msg, None, order_code)
+                                elif resolved_tag in (TAG_2_2, TAG_2_4):
+                                    _log(f"  SKIP MESS 1: all products OOS, no point asking address")
 
                             # MESS 2: deposit message (TAG 1.1, 2.1)
                             if self._cfg.enable_send_message and resolved_tag in (TAG_1_1, TAG_2_1):
                                 deposit_msg = self._build_deposit_message(partner_name)
                                 self._send_in_panel(deposit_msg, None, order_code)
 
-                            # MESS 3: reply comment (TAG 1.1, 1.2, 2, 2.1, 2.2)
-                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2):
+                            # MESS 3: reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
                                 comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"
                                 if comment_ok:
@@ -1767,7 +1879,8 @@ class OrderPage:
                             _log(f"  [!] Row not found for sending: {order_code}")
 
                     order_elapsed = time.time() - order_start
-                    _log(f"  DONE ORDER = {order_code} | STT = {processed}/{total} | TAG = {resolved_tag} | MATCH = {matched_count}/{total_products} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                    oos_label = f" | OOS = {len(oos_products)}/{total_products}" if oos_products else ""
+                    _log(f"  DONE ORDER = {order_code} | STT = {processed}/{total} | TAG = {resolved_tag} | MATCH = {matched_count}/{total_products}{oos_label} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
 
                 except Exception as exc:
                     row_data["Tag"] = ERR

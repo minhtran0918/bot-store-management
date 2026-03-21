@@ -1,53 +1,9 @@
 """Typed accessor for bot-specific configuration.
 
 All timeouts, templates, and feature flags are read from config.yaml.
-Timeouts have no defaults — missing keys cause a startup error.
+Timeouts and message templates have no defaults — missing keys cause a startup error.
 """
 from __future__ import annotations
-
-# ---------------------------------------------------------------------------
-# Default message templates (used when not supplied via config.yaml)
-# ---------------------------------------------------------------------------
-
-_DEFAULT_ASK_ADDRESS_TEMPLATES: list[str] = [
-    'Dạ chị {name} ! Số lượng đơn chốt đủ bộ\n'
-    'Chị "GỬI ĐỊA CHỈ" shop đi đơn ạ ! \n'
-    'Chị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. '
-    'Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !',
-
-    'Dạ chị ! Số lượng đơn chốt đủ bộ\n'
-    'Chị "GỬI ĐỊA CHỈ" shop đi đơn ạ ! \n'
-    'Chị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. '
-    'Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !',
-
-    'Dạ chị {name} ! Số lượng đơn chốt đủ bộ\n'
-    'Chị "GỬI ĐỊA CHỈ" shop đi đơn ạ ! \n'
-    'Chị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. '
-    'Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}',
-]
-
-_DEFAULT_DEPOSIT_TEMPLATE: str = (
-    'Dạ chị {name} !\n'
-    '1/ Đơn 4 bộ cọc 100, 8 bộ cọc 200,.. ( thêm +4 bộ cọc 100 )\n'
-    '2/ Hủy đơn đặt lại có cọc 100 ạ! ( Đơn xã, không nhận hàng,...)\n'
-    '----\n'
-    'NGUYEN THI NGOC NHUNG\n'
-    'ACB\n'
-    '19337611'
-)
-
-_DEFAULT_COMMENT_FALLBACK_TEMPLATES: list[str] = [
-    'Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị không được ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Shop gửi tin nhắn cho chị chưa thấy phản hồi ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Tin nhắn bên shop chưa gửi được cho chị ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Bên shop nhắn chị chưa được nên nhờ chị phản hồi giúp ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Shop liên hệ tin nhắn với chị chưa được ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Bên shop gửi tin nhắn cho chị chưa thấy hiển thị ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị nhưng hệ thống chưa gửi được ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Tin nhắn shop gửi chị chưa tới được ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Shop liên hệ chị qua tin nhắn chưa được ạ.',
-    'Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị nhưng chưa thấy nhận được phản hồi ạ.',
-]
 
 
 class BotConfig:
@@ -59,6 +15,7 @@ class BotConfig:
         self._timeouts: dict = config.get("timeouts") or {}
         self._messages: dict = config.get("messages") or {}
         self._validate_timeouts()
+        self._validate_messages()
 
     # Required timeout keys — must all be present in config.yaml timeouts section
     _REQUIRED_TIMEOUTS = [
@@ -71,12 +28,26 @@ class BotConfig:
         "bill_create_step", "bill_image_load",
     ]
 
+    # Required message keys — must all be present in config.yaml messages section
+    _REQUIRED_MESSAGES = [
+        "ask_address_templates", "deposit_template",
+        "oos_line_format", "oos_templates", "comment_fallback_templates",
+    ]
+
     def _validate_timeouts(self) -> None:
         """Check all required timeout keys exist in config. Raises on missing keys."""
         missing = [k for k in self._REQUIRED_TIMEOUTS if k not in self._timeouts]
         if missing:
             raise ValueError(
                 f"Missing required timeout(s) in config.yaml [timeouts]: {', '.join(missing)}"
+            )
+
+    def _validate_messages(self) -> None:
+        """Check all required message keys exist in config. Raises on missing keys."""
+        missing = [k for k in self._REQUIRED_MESSAGES if k not in self._messages]
+        if missing:
+            raise ValueError(
+                f"Missing required message(s) in config.yaml [messages]: {', '.join(missing)}"
             )
 
     def _t(self, key: str) -> int:
@@ -167,6 +138,16 @@ class BotConfig:
     def enable_send_bill_image(self) -> bool:
         """Send sales bill image (phiếu mua hàng) for TAG 1."""
         return bool(self._features.get("enable_send_bill_image", True))
+
+    @property
+    def enable_send_oos_image(self) -> bool:
+        """Send product images excluding OOS items (TAG 1.4/2.4)."""
+        return bool(self._features.get("enable_send_oos_image", True))
+
+    @property
+    def enable_send_oos_message(self) -> bool:
+        """Send OOS notification message listing out-of-stock products (TAG 1.4/2.4)."""
+        return bool(self._features.get("enable_send_oos_message", True))
 
     # ------------------------------------------------------------------
     # Timeouts — Playwright click/wait timeouts (milliseconds)
@@ -296,26 +277,45 @@ class BotConfig:
     # Message templates
     # ------------------------------------------------------------------
 
+    def _str_list(self, key: str) -> list[str]:
+        """Read a list[str] from messages section. Raises if missing or invalid."""
+        val = self._messages.get(key)
+        if not val or not isinstance(val, list) or not all(isinstance(s, str) for s in val):
+            raise ValueError(
+                f"Missing or invalid '{key}' in config.yaml [messages]: expected a non-empty list of strings"
+            )
+        return [s.rstrip("\n") for s in val]
+
+    def _str_val(self, key: str) -> str:
+        """Read a string from messages section. Raises if missing or invalid."""
+        val = self._messages.get(key)
+        if not val or not isinstance(val, str):
+            raise ValueError(
+                f"Missing or invalid '{key}' in config.yaml [messages]: expected a non-empty string"
+            )
+        return val.rstrip("\n")
+
     @property
     def ask_address_templates(self) -> list[str]:
         """MESS 1: ask-for-address templates. Uses {name} placeholder."""
-        val = self._messages.get("ask_address_templates")
-        if val and isinstance(val, list) and all(isinstance(s, str) for s in val):
-            return [s.rstrip("\n") for s in val]
-        return _DEFAULT_ASK_ADDRESS_TEMPLATES
+        return self._str_list("ask_address_templates")
 
     @property
     def deposit_template(self) -> str:
         """MESS 2: deposit request template. Uses {name} placeholder."""
-        val = self._messages.get("deposit_template")
-        if val and isinstance(val, str):
-            return val.rstrip("\n")
-        return _DEFAULT_DEPOSIT_TEMPLATE
+        return self._str_val("deposit_template")
+
+    @property
+    def oos_line_format(self) -> str:
+        """Format string for each OOS product line. Placeholders: {price}, {name}, {forecast}."""
+        return self._str_val("oos_line_format")
+
+    @property
+    def oos_templates(self) -> list[str]:
+        """OOS notification templates. Uses {name} and {oos_lines} placeholders."""
+        return self._str_list("oos_templates")
 
     @property
     def comment_fallback_templates(self) -> list[str]:
         """MESS 3: FB comment reply templates. Uses {name} placeholder."""
-        val = self._messages.get("comment_fallback_templates")
-        if val and isinstance(val, list) and all(isinstance(s, str) for s in val):
-            return [s.rstrip("\n") for s in val]
-        return _DEFAULT_COMMENT_FALLBACK_TEMPLATES
+        return self._str_list("comment_fallback_templates")
