@@ -56,7 +56,7 @@ python -m unittest tests.test_rules -v
 | `app/config_loader.py` | YAML config loading with PyYAML fallback |
 | `app/store.py` | State persistence (per-day JSON), CSV export, action audit logging |
 | `app/rules.py` | Order classification (`classify_order`) and action decision (`decide_action`) logic |
-| `app/constants.py` | 6-case tag system (TAG_1 through TAG_2_2), RECHECK_TAGS, STATUS_TO_TAG mapping |
+| `app/constants.py` | Full tag system (TAG_0 through TAG_2_4), RECHECK_TAGS, OOS_TAGS, TAG_ONLY_TAGS, STATUS_TO_TAG mapping |
 | `app/cli_helpers.py` | InquirerPy prompts for feature/date/CSV selection |
 | `app/bot_config.py` | Typed config accessor — validates required timeouts at startup, exposes feature flags and message templates |
 | `app/cli_menu.py` | ANSI terminal UI rendering (banner, select, summary) |
@@ -66,30 +66,40 @@ python -m unittest tests.test_rules -v
 | `workflows/navigation.py` | `goto_orders()` — navigate to order URL |
 | `runtime/process_logger.py` | Timestamped console logging, exception capture, debug browser keep-alive |
 
-### 6-Case Tag System (core business logic)
+### Tag System (core business logic)
 
-Orders are classified by address presence + product match count into 6 cases. Tags are set on the web UI and drive which messages get sent. Defined in `app/constants.py`, applied in `order_page.py`'s `enrich_collected_rows()`.
+Orders are classified by address presence + OOS status + product match count. Tags are set on the web UI and drive which messages get sent. Defined in `app/constants.py`, applied in `order_page.py`'s `enrich_collected_rows()`.
 
-**Filter condition**: orders with no tag OR tag 1.2/2.2 (recheck) + status "Nháp" + customer "Bình thường".
+**Filter condition**: orders with no tag OR tag 1.2/2.2 (recheck) + status "Nháp" + customer does NOT have any `keywords.skip_customer_tags`.
+
+**TAG 0**: customer has a skip-tag (e.g. "1 Tỷ lệ thấp") OR delivery rate below `bot.low_delivery_rate_pct` threshold → skip entirely.
 
 | Tag | Status Constant | Condition | Actions |
 | --- | --------------- | --------- | ------- |
-| `1` | `HAVE_ADDR_LOW_SP` | Address + 1-3 products matched | IMAGE_PRODUCT |
+| `1` | `HAVE_ADDR_LOW_SP` | Address + 1-3 products matched | IMAGE_PRODUCT, BILL_IMAGE |
 | `1.1` | `HAVE_ADDR_HIGH_SP` | Address + 4+ products matched | IMAGE_PRODUCT, MESS 2, MESS 3 |
-| `1.2` | `HAVE_ADDR_NO_SP` | Address + 0 matched | Tag only (manual review) |
+| `1.2` | `HAVE_ADDR_NO_SP` | Address + 0 matched (all in-stock) | IMAGE_PRODUCT (all) |
+| `1.3` | `HAVE_ADDR_NO_PROD` | Address + no products in order list | Tag only |
+| `1.4` | `HAVE_ADDR_OOS` | Address + any product OOS | IMAGE_PRODUCT (in-stock), OOS message, MESS 2 if 4+ in-stock |
 | `2` | `NO_ADDR_LOW_SP` | No address + 1-3 products matched | IMAGE_PRODUCT, MESS 1, MESS 3 |
 | `2.1` | `NO_ADDR_HIGH_SP` | No address + 4+ products matched | IMAGE_PRODUCT, MESS 1, MESS 2, MESS 3 |
-| `2.2` | `NO_ADDR_NO_SP` | No address + 0 matched | Tag only (manual review) |
+| `2.2` | `NO_ADDR_NO_SP` | No address + 0 matched (all in-stock) | IMAGE_PRODUCT (all), MESS 1 |
+| `2.3` | `NO_ADDR_NO_PROD` | No address + no products in order list | MESS 1 (ask address) |
+| `2.4` | `NO_ADDR_OOS` | No address + any product OOS | IMAGE_PRODUCT (in-stock), OOS message, MESS 1, MESS 2 if 4+ in-stock |
+
+**OOS rule**: any OOS product immediately routes to TAG 1.4/2.4 regardless of match count. TAG 1.2/2.2 are guaranteed all-in-stock.
 
 **Recheck tags** (1.2, 2.2): `RECHECK_TAGS` set — on next run these orders are re-picked and re-evaluated. If products now match, tag changes to the appropriate case.
 
 ### Message Types
 
-- **MESS 1** — Ask for address (`_NO_ADDR_TEMPLATES`, random selection) → cases 2, 2.1
-- **MESS 2** — Ask for deposit (`_DEPOSIT_TEMPLATE`, fixed) → cases 1.1, 2.1
-- **MESS 3** — Reply comment (`_COMMENT_FALLBACK_TEMPLATES`, random, ALWAYS reply) → cases 1.1, 2, 2.1
+- **MESS 1** — Ask for address (`ask_address_templates`, random selection) → cases 2, 2.1, 2.2, 2.3, 2.4
+- **MESS 2** — Ask for deposit (`deposit_template`, fixed) → cases 1.1, 2.1, and 1.4/2.4 when in-stock count ≥ 4
+- **MESS 3** — Reply FB comment (`comment_fallback_templates`, random) → cases 1.1, 2, 2.1
 
 Sending priority: images first, then text. CSV "Comment" column tracks MESS 3 result: `ok` / `send_fail`.
+
+**FB comment reply**: prioritises comments containing 5+ consecutive `*` anywhere (e.g. `92k **********`). Falls back to first comment of the live day.
 
 ### Test Cap
 
@@ -110,12 +120,13 @@ Sending priority: images first, then text. CSV "Comment" column tracks MESS 3 re
 
 Key sections:
 
-- `bot`: runtime limits (`test_max_collect_records`, `max_images_per_send`)
-- `features`: feature flags (`enable_comment_reply`)
+- `bot`: runtime limits (`test_max_collect_records`, `max_images_per_send`, `low_delivery_rate_pct`)
+- `features`: feature flags (`enable_comment_reply`, `enable_send_message`, `enable_send_product_image`, `enable_send_bill_image`, `enable_send_oos_image`, `enable_send_oos_message`)
 - `timeouts`: all Playwright wait durations in milliseconds — every key is required, no defaults in code
-- `messages`: Vietnamese message templates with `{name}` placeholder for customer name
+- `messages`: Vietnamese message templates with `{name}` placeholder for customer name; required keys: `ask_address_templates`, `deposit_template`, `oos_line_format`, `oos_templates`, `comment_fallback_templates`
 - `keywords.pickup`: phrases indicating in-store pickup (e.g., "ghé lấy")
 - `keywords.match_product`: keywords for product matching in order notes
+- `keywords.skip_customer_tags`: customer tag strings that trigger TAG 0 (e.g. "1 Tỷ lệ thấp")
 - `credentials`: username/password for auto-login
 - `auth.bootstrap_from_token`: reuse saved token to skip login
 - `debug.keep_open`: keep browser open after run for inspection
