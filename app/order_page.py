@@ -1172,8 +1172,9 @@ class OrderPage:
                 _log("  [!] No user comments found")
                 return False
 
-            # Find an enabled reply button across all comments (first disabled = skip)
+            # Find reply button: prioritize comment that is all '*' chars, else first enabled
             reply_btn = None
+            first_btn = None
             for ci in range(user_comments.count()):
                 comment = user_comments.nth(ci)
                 btn = comment.locator("button:has-text('Phản hồi')").first
@@ -1181,8 +1182,22 @@ class OrderPage:
                     continue
                 if btn.is_disabled():
                     continue
-                reply_btn = btn
-                break
+                # Remember the first usable button as fallback
+                if first_btn is None:
+                    first_btn = btn
+                # Check if comment text is all '*' (e.g. "**************")
+                try:
+                    comment_text = comment.inner_text(timeout=self._cfg.inner_text_read_ms).strip()
+                    # Extract just the comment body (first line, ignore timestamps/buttons)
+                    body = comment_text.split("\n")[0].strip()
+                    if body and re.fullmatch(r"\*+", body):
+                        reply_btn = btn
+                        _log(f"  COMMENT: found star-only comment at index {ci}")
+                        break
+                except Exception:
+                    pass
+            if reply_btn is None:
+                reply_btn = first_btn
 
             if reply_btn is None:
                 _log("  [!] Reply button not found or all disabled")
