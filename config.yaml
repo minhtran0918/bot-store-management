@@ -79,8 +79,10 @@ keywords:
   match_product: []
 
 credentials:
-  username: "0915500082"
-  password: "An12345678"
+  #username: "0915500082"
+  #password: "An12345678"
+  username: "test"
+  password: "Test@12345"
 
 auth:
   capture_enabled: false

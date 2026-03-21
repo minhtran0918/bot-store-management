@@ -1132,10 +1132,20 @@ class OrderPage:
                 _log("  [!] No user comments found")
                 return False
 
-            first_comment = user_comments.first
-            reply_btn = first_comment.locator("button:has-text('Phản hồi')").first
-            if reply_btn.count() == 0:
-                _log("  [!] Reply button not found")
+            # Find an enabled reply button across all comments (first disabled = skip)
+            reply_btn = None
+            for ci in range(user_comments.count()):
+                comment = user_comments.nth(ci)
+                btn = comment.locator("button:has-text('Phản hồi')").first
+                if btn.count() == 0:
+                    continue
+                if btn.is_disabled():
+                    continue
+                reply_btn = btn
+                break
+
+            if reply_btn is None:
+                _log("  [!] Reply button not found or all disabled")
                 return False
 
             reply_btn.click(timeout=self._cfg.click_timeout)
@@ -1306,14 +1316,6 @@ class OrderPage:
                     i += 1
                     continue
 
-                # Check customer: must be 'Bình thường'
-                if not self._is_customer_binh_thuong(row):
-                    total_skipped += 1
-                    total_seen += 1
-                    _log(f"SKIP: stt={stt} order={order_code} reason=customer not 'Bình thường'")
-                    i += 1
-                    continue
-
                 total_seen += 1
 
                 # Extract basic row data
@@ -1327,6 +1329,36 @@ class OrderPage:
 
                 total_amount = cells.nth(7).inner_text().strip()
                 total_qty = cells.nth(8).inner_text().strip()
+
+                # Check customer: must be 'Bình thường' — if not, tag as TAG 0 and write CSV
+                if not self._is_customer_binh_thuong(row):
+                    processed += 1
+                    row_data_t0: dict[str, str] = {
+                        "No": stt,
+                        "Order_Code": order_code,
+                        "Tag": TAG_0,
+                        "Channel": channel_name,
+                        "Customer": customer_name,
+                        "Total_Amount": total_amount,
+                        "Total_Qty": total_qty,
+                        "Address_Status": "NOT_BINH_THUONG",
+                        "Note": "",
+                        "Match_Product": "",
+                        "Decision": "skip_not_binh_thuong",
+                        "Comment": "",
+                    }
+                    _log(f"---- ORDER = {order_code}  ({processed})  {customer_name}  customer not 'Bình thường' -> TAG 0 ----")
+                    if not self._apply_processed_tag_to_order(order_code, TAG_0):
+                        row_data_t0["Tag"] = ERR
+                        error_count += 1
+                        _log(f"  [!] TAG 0 FAILED")
+                    else:
+                        _log(f"  TAG -> 0")
+                    tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
+                    csv_writer.write_row(row_data_t0)
+                    _log(f"  CSV +1: total={csv_writer.count}")
+                    i += 1
+                    continue
 
                 row_data: dict[str, str] = {
                     "No": stt,
@@ -1380,7 +1412,7 @@ class OrderPage:
                                 _log(f"  TAG -> 0")
                         tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
                         order_elapsed = time.time() - order_start
-                        _log(f"  DONE ORDER = {order_code} | STT = {processed} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                        _log(f"  DONE ORDER = {order_code} | STT = {processed} | TAG = 0 | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
                         # Write CSV + skip rest of try block (finally still runs)
                         csv_writer.write_row(row_data)
                         _log(f"  CSV +1: total={csv_writer.count}")
@@ -1477,7 +1509,7 @@ class OrderPage:
                             _log(f"  [!] Row not found for sending: {order_code}")
 
                     order_elapsed = time.time() - order_start
-                    _log(f"  DONE ORDER = {order_code} | STT = {processed} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                    _log(f"  DONE ORDER = {order_code} | STT = {processed} | TAG = {resolved_tag} | MATCH = {matched_count}/{total_products} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
 
                 except Exception as exc:
                     row_data["Tag"] = ERR
@@ -1535,23 +1567,31 @@ class OrderPage:
         return processed, action_count, error_count
 
     def enrich_collected_rows(self, rows_data: list[dict[str, str]], data_dir: Path | None = None, campaign_label: str = "", price_code_mapping: dict[str, int | None] | None = None) -> tuple[int, int, int]:
-        # Build lookup: order_code -> row_data (only orders with no tag)
+        # Build lookups: qualify (no tag) and tag0 (not-binh-thuong, need TAG 0 applied)
         whitelist = set(self._cfg.test_order_ids)
         qualify_lookup: dict[str, dict[str, str]] = {}
+        tag0_lookup: dict[str, dict[str, str]] = {}
         for r in rows_data:
             code = str(r.get("Order_Code", "")).strip()
             tag = str(r.get("Tag", "")).strip()
-            if code and not tag:
+            decision = str(r.get("Decision", "")).strip()
+            if not code:
+                continue
+            if decision == "skip_not_binh_thuong":
+                if whitelist and code not in whitelist:
+                    continue
+                tag0_lookup[code] = r
+            elif not tag:
                 if whitelist and code not in whitelist:
                     continue
                 qualify_lookup[code] = r
 
         total = len(qualify_lookup)
-        skipped_existing = len(rows_data) - total
+        skipped_existing = len(rows_data) - total - len(tag0_lookup)
         _log("=" * 60)
         if whitelist:
             _log(f"WHITELIST mode: only processing {len(whitelist)} order(s): {', '.join(whitelist)}")
-        _log(f"ENRICH: {total} qualifying orders (no tag) | skipped {skipped_existing} with tags")
+        _log(f"ENRICH: {total} qualifying orders (no tag) | {len(tag0_lookup)} not-binh-thuong (TAG 0) | skipped {skipped_existing} with tags")
         _log("=" * 60)
 
         processed = 0
@@ -1575,7 +1615,20 @@ class OrderPage:
                 except Exception:
                     continue
 
-                if order_code not in qualify_lookup:
+                if order_code not in qualify_lookup and order_code not in tag0_lookup:
+                    continue
+
+                # Not-binh-thuong: apply TAG 0 without opening modal
+                if order_code in tag0_lookup:
+                    rd = tag0_lookup.pop(order_code)
+                    _log(f"TAG 0: order={order_code} customer not 'Bình thường'")
+                    if not self._apply_processed_tag_to_order(order_code, TAG_0):
+                        rd["Tag"] = ERR
+                        error_count += 1
+                        _log(f"  [!] TAG 0 FAILED")
+                    else:
+                        _log(f"  TAG -> 0")
+                    tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
                     continue
 
                 row_data = qualify_lookup.pop(order_code)
@@ -1617,7 +1670,7 @@ class OrderPage:
                                 _log(f"  TAG -> 0")
                         tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
                         order_elapsed = time.time() - order_start
-                        _log(f"  DONE ORDER = {order_code} | STT = {processed} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                        _log(f"  DONE ORDER = {order_code} | STT = {processed}/{total} | TAG = 0 | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
                         continue
 
                     have_address, matched_count, total_products, resolved_tag, note_prices = self._evaluate_modal_address_and_product(price_code_mapping)
@@ -1714,7 +1767,7 @@ class OrderPage:
                             _log(f"  [!] Row not found for sending: {order_code}")
 
                     order_elapsed = time.time() - order_start
-                    _log(f"  DONE ORDER = {order_code} | STT = {processed}/{total} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                    _log(f"  DONE ORDER = {order_code} | STT = {processed}/{total} | TAG = {resolved_tag} | MATCH = {matched_count}/{total_products} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
 
                 except Exception as exc:
                     row_data["Tag"] = ERR
@@ -1728,7 +1781,7 @@ class OrderPage:
                     self._close_edit_modal_safely()
 
             # All qualifying orders processed? Stop early
-            if not qualify_lookup:
+            if not qualify_lookup and not tag0_lookup:
                 _log(f"[PAGE {page_index}] All qualifying orders done")
                 break
 
@@ -1745,6 +1798,11 @@ class OrderPage:
             rd["Note"] = "not found in table"
             error_count += 1
             _log(f"  [!] NOT FOUND: {code}")
+        for code, rd in tag0_lookup.items():
+            rd["Tag"] = ERR
+            rd["Note"] = "not found in table"
+            error_count += 1
+            _log(f"  [!] NOT FOUND (not-binh-thuong): {code}")
 
         total_elapsed = time.time() - enrich_start
         total_min, total_sec = divmod(int(total_elapsed), 60)
@@ -1896,12 +1954,6 @@ class OrderPage:
                 _log(f"CSV collect SKIP: stt={stt} order={order_code} reason=status not 'Nháp'")
                 continue
 
-            # Check customer label: must be 'Bình thường'
-            if not self._is_customer_binh_thuong(row):
-                skipped += 1
-                _log(f"CSV collect SKIP: stt={stt} order={order_code} reason=customer not 'Bình thường'")
-                continue
-
             channel_cell = cells.nth(5)
             channel_span = channel_cell.locator("span.ml-2").first
             channel_name = channel_span.inner_text().strip() if channel_span.count() > 0 else channel_cell.inner_text().strip()
@@ -1912,6 +1964,27 @@ class OrderPage:
 
             total_amount = cells.nth(7).inner_text().strip()
             total_qty = cells.nth(8).inner_text().strip()
+
+            # Check customer label: must be 'Bình thường' — if not, include with TAG 0
+            if not self._is_customer_binh_thuong(row):
+                _log(f"CSV collect: stt={stt} order={order_code} customer not 'Bình thường' -> TAG 0")
+                data.append({
+                    "No": stt,
+                    "Order_Code": order_code,
+                    "Tag": TAG_0,
+                    "Channel": channel_name,
+                    "Customer": customer_name,
+                    "Total_Amount": total_amount,
+                    "Total_Qty": total_qty,
+                    "Address_Status": "NOT_BINH_THUONG",
+                    "Note": "",
+                    "Match_Product": "",
+                    "Decision": "skip_not_binh_thuong",
+                    "Comment": "",
+                })
+                existing_codes.add(order_code)
+                added += 1
+                continue
 
             data.append({
                 "No": stt,
