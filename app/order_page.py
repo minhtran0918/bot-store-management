@@ -1012,6 +1012,53 @@ class OrderPage:
         except Exception:
             return False
 
+    def _find_comment_reply_send_button(self, reply_textarea: Locator) -> Locator:
+        """Find the FB comment-reply send button without colliding with inbox send."""
+        scoped_roots = [
+            reply_textarea.locator(
+                "xpath=ancestor::div[.//button[@type='button'][contains(@tooltiptitle, 'Enter')]][1]"
+            ).first,
+            reply_textarea.locator(
+                "xpath=ancestor::div[.//button[@type='button'][.//i[contains(@class, 'tdsi-send-fill')]]][1]"
+            ).first,
+        ]
+
+        scoped_selectors = [
+            "button[tds-button][type='button'][tooltiptitle*='Nhấn Enter để gửi']",
+            "button[tds-button][type='button'][tooltiptitle*='Enter']",
+            "button[tds-button][type='button']:has(i.tdsi-send-fill):has-text('Gửi')",
+            "button[type='button']:has(i.tdsi-send-fill):has-text('Gửi')",
+        ]
+
+        for root in scoped_roots:
+            try:
+                if root.count() == 0:
+                    continue
+            except Exception:
+                continue
+            for selector in scoped_selectors:
+                candidate = root.locator(selector).first
+                try:
+                    if candidate.count() > 0:
+                        return candidate
+                except Exception:
+                    continue
+
+        return self.page.locator(
+            "button[tds-button][type='button'][tooltiptitle*='Nhấn Enter để gửi']:has(i.tdsi-send-fill)"
+        ).first
+
+    def _reply_submit_succeeded(self, reply_textarea: Locator) -> bool:
+        """Treat cleared/hidden reply textarea as a successful FB comment reply send."""
+        try:
+            if reply_textarea.count() == 0:
+                return True
+            value = reply_textarea.input_value(timeout=self._cfg.inner_text_read_ms).strip()
+            return not value
+        except Exception:
+            # If the textarea detached or can no longer be read, the reply box likely closed after send.
+            return True
+
     def _reply_comment_fallback(self, partner_name: str, campaign_label: str = "") -> bool:
         """Reply to the first comment of the FB post matching campaign_label date (latest time on that day)."""
         try:
@@ -1096,9 +1143,9 @@ class OrderPage:
 
             # Type message into reply textarea
             reply_textarea = self.page.locator(
-                "textarea#inputReply, "
-                "textarea[placeholder*='Nhập nội dung trả lời']"
-            ).last
+                "textarea#inputReply:visible, "
+                "textarea[placeholder*='Nhập nội dung trả lời']:visible"
+            ).first
             if reply_textarea.count() == 0:
                 _log("  [!] Reply textarea not found")
                 return False
@@ -1111,17 +1158,8 @@ class OrderPage:
             reply_textarea.fill(fallback_msg)
             self.page.wait_for_timeout(self._cfg.text_fill_ms)
 
-            # Click "Phản hồi" submit button (NOT "Gửi" — that's for inbox messages)
-            # After clicking the first "Phản hồi" to open the reply textarea,
-            # a second "Phản hồi" button appears to submit the reply.
-            reply_submit = self.page.locator(
-                "button.link-act:has-text('Phản hồi')"
-            ).last
-            if reply_submit.count() == 0:
-                # Fallback: any button with "Phản hồi" text near the reply area
-                reply_submit = first_comment.locator(
-                    "button:has-text('Phản hồi')"
-                ).last
+            # Click the send button inside the reply composer, not the inbox send below.
+            reply_submit = self._find_comment_reply_send_button(reply_textarea)
             for attempt in range(1, 4):
                 try:
                     reply_submit.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
@@ -1130,15 +1168,29 @@ class OrderPage:
                         reply_submit.click(timeout=self._cfg.click_timeout)
                     except Exception:
                         reply_submit.click(timeout=self._cfg.click_timeout, force=True)
-                    break
                 except Exception as exc:
                     _log(f"  [!] Comment reply submit attempt {attempt}/3 error: {exc}")
-                    if attempt < 3:
-                        self.page.wait_for_timeout(500)
-            self.page.wait_for_timeout(self._cfg.panel_open_ms)
+                self.page.wait_for_timeout(self._cfg.panel_open_ms)
+                if self._reply_submit_succeeded(reply_textarea):
+                    _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
+                    return True
 
-            _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
-            return True
+                # Fallback: the reply button advertises Enter-to-send.
+                try:
+                    reply_textarea.press("Enter")
+                except Exception as exc:
+                    _log(f"  [!] Comment reply Enter fallback attempt {attempt}/3 error: {exc}")
+                self.page.wait_for_timeout(self._cfg.panel_open_ms)
+                if self._reply_submit_succeeded(reply_textarea):
+                    _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
+                    return True
+
+                if attempt < 3:
+                    _log(f"  [!] Comment reply send attempt {attempt}/3 did not clear reply box, retrying...")
+                    self.page.wait_for_timeout(500)
+
+            _log("  [!] Comment reply send button did not submit reply")
+            return False
         except Exception as exc:
             _log(f"  [!] Comment reply failed: {exc}")
             _log(f"  [!] Stack trace:\n{traceback.format_exc()}")

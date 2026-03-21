@@ -55,3 +55,50 @@ masp	sdt	gia	thoi_diem_xu_ly	thoi_gian_xu_ly	so_lan_chay	trang_thai	loi_chi_tiet
 C15 KEM	358395433	144000	2026-03-20 00:25:20	2.73	1	ok	OK
 C15 KEM	974902390	144000	2026-03-20 00:25:25	4.27	1	ok	OK
 C15 KEM	839063689	144000	2026-03-20 00:25:29	4.71	1	ok	OK
+====================
+185
+185 0968796393
+185k 0968796393
+185/0968796393
+185da
+Ngo 185
+Jeasn dai 185
+Đầm chấm bi 185+ 0397780384
+0898931929. 185
+185 L
+Sét 185:0963747839
+A2185/0335729742 -> vừa A2 vừa 185, phải lấy giá của A2 (từ cli so sánh) bỏ qua 185
+M185
+0868474748/ 185 k
+Với 185 đầm trắng
+185+0379549302
+185 0386870095
+160-0938087170
+144. 0358395433
+185+ 164. 0972363927 -> thua, đang có 2 giá 185, 164 (ko check được, tự user check, tag 1.2, 2.2 gì đó)
+A1/185 0989898043 -> vừa A1 vừa 185, phải lấy giá của A1 (từ cli so sánh) bỏ qua 185
+185 ao trang quan zin 158  49kg 0918936227 -> thua, đang có 2 giá 185, 158 (ko check được, tự user check, tag 1.2, 2.2 gì đó)
+185 /0374752624
+A1 giá 185k sđt 0332677603  ->  vừa A1 vừa 185, phải lấy giá của A1 (từ cli so sánh) bỏ qua 185
+185-0948676491
+185.0328019689
+185 @0905836873
+185 0947 729 097 -> giá 185, 0947 729 097 là 10 chữ số của sdt
+A2.185  ->  vừa A2 vừa 185, phải lấy giá của A2 (từ cli so sánh) bỏ qua 185
+A185 0868587668 -> này là A1 (ưu tiên detect Ax trước, kế bên mới tới giá), giá là 85
+A1 0918.677.633 -> giá A1, 0918.677.633 là 10 chữ số của sdt
+A1-m_0982710155
+a1 size m 0982971613
+185- váy trắng 0395822203
+185, 0353407957
+Chấm bi kem 185 0366408205
+A1 .185 .0389026248  ->  vừa A1 vừa 185, phải lấy giá của A1 (từ cli so sánh) bỏ qua 185
+A 1 -> là A1
+a1 jean -> là A1
+A 2 kem..ren kem đơn...e nhé -> là A2
+A1 185 0374101059  ->  vừa A1 vừa 185, phải lấy giá của A1 (từ cli so sánh) bỏ qua 185
+A1+0337232576 -> là A1
+A117/0978971998 -> là A1 & giá là 17
+A11 0962301005 -> case này thua, cứ ko khớp sản phẩm đi, vì đâu có Axx đâu
+A10972643331 -> A1 & 0972643331 sdt
+A1/0968442599
