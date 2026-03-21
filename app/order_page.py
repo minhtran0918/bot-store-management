@@ -1394,19 +1394,19 @@ class OrderPage:
                             if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
                                 partner_name = self._read_partner_name()
 
-                            # MESS 1: ask address (all no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
-                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
-                                ask_msg = self._build_ask_address_message(partner_name)
-                                self._send_in_panel(ask_msg, None, order_code)
-
-                            # IMAGE: send product images separately (all tags except tag-only)
+                            # IMAGE: send product images first
                             if self._cfg.enable_send_product_image and saved_images:
                                 self._send_batched_in_open_panel("", saved_images, order_code)
 
-                            # BILL: send bill image (TAG 1 only)
+                            # BILL: send bill image before follow-up texts
                             if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
                                 self._send_bill_image_in_panel(order_code)
                                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+                            # MESS 1: ask address after images (all no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
+                                ask_msg = self._build_ask_address_message(partner_name)
+                                self._send_in_panel(ask_msg, None, order_code)
 
                             # MESS 2: deposit message (TAG 1.1, 2.1)
                             if self._cfg.enable_send_message and resolved_tag in (TAG_1_1, TAG_2_1):
@@ -1627,19 +1627,19 @@ class OrderPage:
                             if resolved_tag in (TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
                                 partner_name = self._read_partner_name()
 
-                            # MESS 1: ask address (all no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
-                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
-                                ask_msg = self._build_ask_address_message(partner_name)
-                                self._send_in_panel(ask_msg, None, order_code)
-
-                            # IMAGE: send product images separately
+                            # IMAGE: send product images first
                             if self._cfg.enable_send_product_image and saved_images:
                                 self._send_batched_in_open_panel("", saved_images, order_code)
 
-                            # BILL: send bill image (TAG 1 only)
+                            # BILL: send bill image before follow-up texts
                             if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
                                 self._send_bill_image_in_panel(order_code)
                                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+                            # MESS 1: ask address after images (all no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            if self._cfg.enable_send_message and resolved_tag in (TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
+                                ask_msg = self._build_ask_address_message(partner_name)
+                                self._send_in_panel(ask_msg, None, order_code)
 
                             # MESS 2: deposit message (TAG 1.1, 2.1)
                             if self._cfg.enable_send_message and resolved_tag in (TAG_1_1, TAG_2_1):
