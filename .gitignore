@@ -5,3 +5,6 @@ __pycache__/
 /data
 /.claude/
 /.vscode/
+/.tmp/
+CLAUDE.md
+.claudeignore
