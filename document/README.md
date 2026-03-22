@@ -9,7 +9,7 @@ Simple Playwright automation for order handling with conditional actions.
 
 ## Step 1 — Install Git
 
-1. Go to: **https://git-scm.com/downloads/win**
+1. Go to: **<https://git-scm.com/downloads/win>**
 2. Download and run the installer
 3. Use default options — click **Next** until installation finishes
 
@@ -17,7 +17,7 @@ Simple Playwright automation for order handling with conditional actions.
 
 ## Step 2 — Install Python
 
-1. Go to: **https://www.python.org/downloads/windows/**
+1. Go to: **<https://www.python.org/downloads/windows/>**
 2. Click the yellow **"Download Python 3.x.x"** button at the top
 3. Run the downloaded installer
 4. **Important:** Check the box **"Add python.exe to PATH"** before clicking Install
@@ -55,8 +55,8 @@ python main.py
 Campaign filter selection is interactive when starting `main.py`:
 
 - First, choose run feature:
-  - `collect_order` (default): filter and collect rows to CSV across pagination, auto-add `NEW` tag for empty-tag rows, then run per-order check (`check_tag_new -> address_ok/no_address -> match_product/no_match_product`) before saving CSV.
-  - `confirm_order`: requires selecting an existing collected CSV, then runs login -> dashboard -> order -> filter -> iterate CSV order codes with per-order pagination lookup before edit-action placeholders.
+  - `collect_order` (default): filter and collect rows to CSV across pagination, auto-add `NEW` tag for empty-tag rows, then run per-order check (`check_tag_new → address_ok/no_address → match_product/no_match_product`) before saving CSV.
+  - `confirm_order`: requires selecting an existing collected CSV, then runs login → dashboard → order → filter → iterate CSV order codes with per-order pagination lookup before edit-action placeholders.
 - Press `1` for `yesterday` (default)
 - Press `2` for `today`
 - Press `3` to input a custom date (`d/m`, `d/m/yyyy`, or `yyyy-mm-dd`)

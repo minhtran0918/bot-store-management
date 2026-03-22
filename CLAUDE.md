@@ -76,16 +76,16 @@ Orders are classified by address presence + OOS status + product match count. Ta
 
 | Tag | Status Constant | Condition | Actions |
 | --- | --------------- | --------- | ------- |
-| `1` | `HAVE_ADDR_LOW_SP` | Address + 1-3 products matched | IMAGE_PRODUCT, BILL_IMAGE |
-| `1.1` | `HAVE_ADDR_HIGH_SP` | Address + 4+ products matched | IMAGE_PRODUCT, MESS 2, MESS 3 |
+| `1` | `HAVE_ADDR_LOW_SP` | Address + 1-3 products matched | IMAGE_PRODUCT, BILL_IMAGE, reply comment |
+| `1.1` | `HAVE_ADDR_HIGH_SP` | Address + 4+ products matched | IMAGE_PRODUCT, ask deposit, reply comment |
 | `1.2` | `HAVE_ADDR_NO_SP` | Address + 0 matched (all in-stock) | IMAGE_PRODUCT (all) |
 | `1.3` | `HAVE_ADDR_NO_PROD` | Address + no products in order list | Tag only |
-| `1.4` | `HAVE_ADDR_OOS` | Address + any product OOS | IMAGE_PRODUCT (in-stock), OOS message, MESS 2 if 4+ in-stock |
-| `2` | `NO_ADDR_LOW_SP` | No address + 1-3 products matched | IMAGE_PRODUCT, MESS 1, MESS 3 |
-| `2.1` | `NO_ADDR_HIGH_SP` | No address + 4+ products matched | IMAGE_PRODUCT, MESS 1, MESS 2, MESS 3 |
-| `2.2` | `NO_ADDR_NO_SP` | No address + 0 matched (all in-stock) | IMAGE_PRODUCT (all), MESS 1 |
-| `2.3` | `NO_ADDR_NO_PROD` | No address + no products in order list | MESS 1 (ask address) |
-| `2.4` | `NO_ADDR_OOS` | No address + any product OOS | IMAGE_PRODUCT (in-stock), OOS message, MESS 1, MESS 2 if 4+ in-stock |
+| `1.4` | `HAVE_ADDR_OOS` | Address + any product OOS | IMAGE_PRODUCT (in-stock), OOS message, ask deposit if 4+ in-stock |
+| `2` | `NO_ADDR_LOW_SP` | No address + 1-3 products matched | IMAGE_PRODUCT, ask address, reply comment |
+| `2.1` | `NO_ADDR_HIGH_SP` | No address + 4+ products matched | IMAGE_PRODUCT, ask address, ask deposit, reply comment |
+| `2.2` | `NO_ADDR_NO_SP` | No address + 0 matched (all in-stock) | IMAGE_PRODUCT (all), ask address |
+| `2.3` | `NO_ADDR_NO_PROD` | No address + no products in order list | ask address |
+| `2.4` | `NO_ADDR_OOS` | No address + any product OOS | IMAGE_PRODUCT (in-stock), OOS message, ask address, ask deposit if 4+ in-stock |
 
 **OOS rule**: any OOS product immediately routes to TAG 1.4/2.4 regardless of match count. TAG 1.2/2.2 are guaranteed all-in-stock.
 
@@ -93,11 +93,11 @@ Orders are classified by address presence + OOS status + product match count. Ta
 
 ### Message Types
 
-- **MESS 1** — Ask for address (`ask_address_templates`, random selection) → cases 2, 2.1, 2.2, 2.3, 2.4
-- **MESS 2** — Ask for deposit (`deposit_template`, fixed) → cases 1.1, 2.1, and 1.4/2.4 when in-stock count ≥ 4
-- **MESS 3** — Reply FB comment (`comment_fallback_templates`, random) → cases 1.1, 2, 2.1
+- **ask address** — Ask for address (`ask_address_templates`, random selection) → cases 2, 2.1, 2.2, 2.4; case 2.3 uses `ask_address_no_product_templates`
+- **ask deposit** — Ask for deposit (`deposit_template`, fixed) → cases 1.1, 2.1, and 1.4/2.4 when in-stock count ≥ 4
+- **reply comment** — Reply FB comment → case 1 uses `comment_order_done_templates` (order confirmed); cases 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4 use `comment_fallback_templates` (random)
 
-Sending priority: images first, then text. CSV "Comment" column tracks MESS 3 result: `ok` / `send_fail`.
+Sending priority: images first, then text. CSV "Comment" column tracks reply comment result: `ok` / `send_fail`.
 
 **FB comment reply**: prioritises comments containing 5+ consecutive `*` anywhere (e.g. `92k **********`). Falls back to first comment of the live day.
 

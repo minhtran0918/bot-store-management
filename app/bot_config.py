@@ -26,13 +26,13 @@ class BotConfig:
         "pagination", "filter_search", "filter_apply", "escape_close",
         "table_load", "spinner_hide", "error_recheck", "comment_reply_post",
         "notification_click", "inner_text_read", "tag_clear", "tag_backspace",
-        "bill_create_step", "bill_image_load",
+        "bill_create_step", "bill_image_load", "bill_reload_retry_delay",
     ]
 
     # Required message keys — must all be present in config.yaml messages section
     _REQUIRED_MESSAGES = [
-        "ask_address_templates", "deposit_template",
-        "oos_line_format", "oos_templates", "comment_fallback_templates",
+        "ask_address_templates", "ask_address_no_product_templates", "deposit_template",
+        "oos_line_format", "oos_templates", "comment_order_done_templates", "comment_fallback_templates",
     ]
 
     def _validate_timeouts(self) -> None:
@@ -116,6 +116,14 @@ class BotConfig:
         except (TypeError, ValueError):
             return 60
 
+    @property
+    def bill_reload_retry_count(self) -> int:
+        """Number of extra retry attempts for bill image send after reload (0 = no retry)."""
+        try:
+            return max(0, int(self._bot.get("bill_reload_retry_count", 0)))
+        except (TypeError, ValueError):
+            return 0
+
     # ------------------------------------------------------------------
     # Keywords / lists
     # ------------------------------------------------------------------
@@ -134,12 +142,12 @@ class BotConfig:
 
     @property
     def enable_comment_reply(self) -> bool:
-        """MESS 3: reply to the customer's FB comment. Disable when the feature is buggy."""
+        """reply comment: reply to the customer's FB comment. Disable when the feature is buggy."""
         return bool(self._features.get("enable_comment_reply", False))
 
     @property
     def enable_send_message(self) -> bool:
-        """MESS 1/2: send inbox text messages (ask address, deposit)."""
+        """ask address/deposit: send inbox text messages (ask address, deposit)."""
         return bool(self._features.get("enable_send_message", True))
 
     @property
@@ -286,6 +294,11 @@ class BotConfig:
         """Wait for bill image to load into message box."""
         return self._t("bill_image_load")
 
+    @property
+    def bill_reload_retry_delay_ms(self) -> int:
+        """Wait after clicking reload before retrying bill image send."""
+        return self._t("bill_reload_retry_delay")
+
     # ------------------------------------------------------------------
     # Message templates
     # ------------------------------------------------------------------
@@ -310,12 +323,17 @@ class BotConfig:
 
     @property
     def ask_address_templates(self) -> list[str]:
-        """MESS 1: ask-for-address templates. Uses {name} placeholder."""
+        """ask address templates. Uses {name} placeholder."""
         return self._str_list("ask_address_templates")
 
     @property
+    def ask_address_no_product_templates(self) -> list[str]:
+        """ask address (case 2.3): ask-for-address templates when no products in order. Uses {name} placeholder."""
+        return self._str_list("ask_address_no_product_templates")
+
+    @property
     def deposit_template(self) -> str:
-        """MESS 2: deposit request template. Uses {name} placeholder."""
+        """ask deposit template. Uses {name} placeholder."""
         return self._str_val("deposit_template")
 
     @property
@@ -329,6 +347,11 @@ class BotConfig:
         return self._str_list("oos_templates")
 
     @property
+    def comment_order_done_templates(self) -> list[str]:
+        """reply comment for TAG 1 (order confirmed). Uses {name} placeholder."""
+        return self._str_list("comment_order_done_templates")
+
+    @property
     def comment_fallback_templates(self) -> list[str]:
-        """MESS 3: FB comment reply templates. Uses {name} placeholder."""
+        """reply comment templates. Uses {name} placeholder."""
         return self._str_list("comment_fallback_templates")

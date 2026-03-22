@@ -2,3 +2,8 @@ playwright
 PyYAML
 Pillow
 InquirerPy
+websockets
+gspread
+google-auth
+google-auth-httplib2
+google-api-python-client

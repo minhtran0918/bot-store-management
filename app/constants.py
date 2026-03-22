@@ -13,21 +13,21 @@ TAG_2_2 = "2.2"      # No address + note/product mismatch
 TAG_2_3 = "2.3"      # No address + no products in order list
 TAG_2_4 = "2.4"      # No address + any product has Tồn dự báo <= 0
 ERR = "ERR"          # Error during processing
-LOW_DELIVERY_RATE = "LOW_DELIVERY_RATE"  # Delivery rate < threshold -> TAG 0
+LOW_DELIVERY_RATE = "LOW_DELIVERY_RATE"  # Delivery rate < threshold → TAG 0
 
 # Internal status names (used in code/CSV)
-HAVE_ADDR_LOW_SP = "HAVE_ADDR_LOW_SP"    # Have address + full match for ≤3 products -> TAG 1
-HAVE_ADDR_HIGH_SP = "HAVE_ADDR_HIGH_SP"  # Have address + full match for 4+ products -> TAG 1.1
-HAVE_ADDR_NO_SP = "HAVE_ADDR_NO_SP"      # Have address + note/product mismatch -> TAG 1.2
-HAVE_ADDR_NO_PROD = "HAVE_ADDR_NO_PROD"  # Have address + no products in list -> TAG 1.3
-HAVE_ADDR_OOS = "HAVE_ADDR_OOS"          # Have address + out of stock -> TAG 1.4
-NO_ADDR_LOW_SP = "NO_ADDR_LOW_SP"        # No address + full match for ≤3 products -> TAG 2
-NO_ADDR_HIGH_SP = "NO_ADDR_HIGH_SP"      # No address + full match for 4+ products -> TAG 2.1
-NO_ADDR_NO_SP = "NO_ADDR_NO_SP"          # No address + note/product mismatch -> TAG 2.2
-NO_ADDR_NO_PROD = "NO_ADDR_NO_PROD"      # No address + no products in list -> TAG 2.3
-NO_ADDR_OOS = "NO_ADDR_OOS"              # No address + out of stock -> TAG 2.4
+HAVE_ADDR_LOW_SP = "HAVE_ADDR_LOW_SP"    # Have address + full match for ≤3 products → TAG 1
+HAVE_ADDR_HIGH_SP = "HAVE_ADDR_HIGH_SP"  # Have address + full match for 4+ products → TAG 1.1
+HAVE_ADDR_NO_SP = "HAVE_ADDR_NO_SP"      # Have address + note/product mismatch → TAG 1.2
+HAVE_ADDR_NO_PROD = "HAVE_ADDR_NO_PROD"  # Have address + no products in list → TAG 1.3
+HAVE_ADDR_OOS = "HAVE_ADDR_OOS"          # Have address + out of stock → TAG 1.4
+NO_ADDR_LOW_SP = "NO_ADDR_LOW_SP"        # No address + full match for ≤3 products → TAG 2
+NO_ADDR_HIGH_SP = "NO_ADDR_HIGH_SP"      # No address + full match for 4+ products → TAG 2.1
+NO_ADDR_NO_SP = "NO_ADDR_NO_SP"          # No address + note/product mismatch → TAG 2.2
+NO_ADDR_NO_PROD = "NO_ADDR_NO_PROD"      # No address + no products in list → TAG 2.3
+NO_ADDR_OOS = "NO_ADDR_OOS"              # No address + out of stock → TAG 2.4
 
-# Mapping: internal status -> web tag label
+# Mapping: internal status → web tag label
 STATUS_TO_TAG = {
     HAVE_ADDR_LOW_SP: TAG_1,
     HAVE_ADDR_HIGH_SP: TAG_1_1,
@@ -47,7 +47,7 @@ RECHECK_TAGS = {TAG_1_2, TAG_2_2}
 
 # Tags that indicate "tag only, no action" — orders with these tags are skipped for messaging
 # NOTE: TAG_1_4 and TAG_2_4 are NOT included here because they now send OOS notification + images
-# NOTE: TAG_2_3 is NOT included here because it still needs MESS 1 (ask address)
+# NOTE: TAG_2_3 is NOT included here because it still needs ask address
 TAG_ONLY_TAGS = {TAG_1_3}
 
 # Tags that indicate out-of-stock — need OOS notification message

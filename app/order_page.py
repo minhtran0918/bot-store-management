@@ -937,60 +937,80 @@ class OrderPage:
         """Send bill image within the open message panel.
 
         Steps: click 'Phiếu bán hàng' → first item three-dots → 'Gửi ảnh phiếu bán hàng'
-        → wait for image to load → send.
+        → wait for image to load → send. Retries with reload button on failure.
         """
-        try:
-            # Click "Phiếu bán hàng" button (file icon)
-            bill_btn = self.page.locator(
-                "button[tooltiptitle='Phiếu bán hàng'], "
-                "button:has(i.tdsi-file-line)"
-            ).first
-            if bill_btn.count() == 0:
-                _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
-                return False
-            bill_btn.click(timeout=self._cfg.click_timeout)
-            self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+        max_retries = self._cfg.bill_reload_retry_count
+        retry_delay_ms = self._cfg.bill_reload_retry_delay_ms
 
-            # Click three-dots button (span with tdsi-three-dots-horizon-fill icon)
-            three_dots_btn = self.page.locator(
-                "span.flex.items-center:has(i.tdsi-three-dots-horizon-fill)"
-            ).first
-            if three_dots_btn.count() == 0:
-                _log(f"  [!] BILL IMG: three-dots button not found for {order_code}")
-                return False
-            three_dots_btn.click(timeout=self._cfg.click_timeout)
-            self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
-
-            # Click "Gửi ảnh phiếu bán hàng" from popup
-            send_bill_img_btn = self.page.locator(
-                "span:has(i.tdsi-images-fill):has-text('Gửi ảnh phiếu bán hàng')"
-            ).first
-            if send_bill_img_btn.count() == 0:
-                # Fallback: text-based match
-                send_bill_img_btn = self.page.locator("text=Gửi ảnh phiếu bán hàng").first
-            if send_bill_img_btn.count() == 0:
-                _log(f"  [!] BILL IMG: 'Gửi ảnh phiếu bán hàng' not found for {order_code}")
-                return False
-            send_bill_img_btn.click(timeout=self._cfg.click_timeout)
-
-            # Wait for the bill list modal to disappear (returns to message panel)
+        for attempt in range(max_retries + 1):
             try:
-                self.page.wait_for_selector(
-                    "app-modal-list-bill", state="hidden", timeout=self._cfg.spinner_hide_ms
-                )
-            except Exception:
-                pass  # modal may already be gone
-            self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                # Click "Phiếu bán hàng" button (file icon)
+                bill_btn = self.page.locator(
+                    "button[tooltiptitle='Phiếu bán hàng'], "
+                    "button:has(i.tdsi-file-line)"
+                ).first
+                if bill_btn.count() == 0:
+                    _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
+                    return False
+                bill_btn.click(timeout=self._cfg.click_timeout)
+                self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
 
-            # Send the message with bill image
-            self._click_send_button_reliable(order_code)
-            self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                # Click three-dots button (span with tdsi-three-dots-horizon-fill icon)
+                three_dots_btn = self.page.locator(
+                    "span.flex.items-center:has(i.tdsi-three-dots-horizon-fill)"
+                ).first
+                if three_dots_btn.count() == 0:
+                    raise RuntimeError("three-dots button not found")
+                three_dots_btn.click(timeout=self._cfg.click_timeout)
+                self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
 
-            _log(f"  BILL IMG: sent for {order_code}")
-            return True
-        except Exception as exc:
-            _log(f"  [!] BILL IMG: send failed for {order_code}: {exc}")
-            return False
+                # Click "Gửi ảnh phiếu bán hàng" from popup
+                send_bill_img_btn = self.page.locator(
+                    "span:has(i.tdsi-images-fill):has-text('Gửi ảnh phiếu bán hàng')"
+                ).first
+                if send_bill_img_btn.count() == 0:
+                    # Fallback: text-based match
+                    send_bill_img_btn = self.page.locator("text=Gửi ảnh phiếu bán hàng").first
+                if send_bill_img_btn.count() == 0:
+                    raise RuntimeError("'Gửi ảnh phiếu bán hàng' not found")
+                send_bill_img_btn.click(timeout=self._cfg.click_timeout)
+
+                # Wait for the bill list modal to disappear (returns to message panel)
+                try:
+                    self.page.wait_for_selector(
+                        "app-modal-list-bill", state="hidden", timeout=self._cfg.spinner_hide_ms
+                    )
+                except Exception:
+                    pass  # modal may already be gone
+                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+                # Send the message with bill image
+                self._click_send_button_reliable(order_code)
+                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+                _log(f"  BILL IMG: sent for {order_code}")
+                return True
+
+            except Exception as exc:
+                if attempt < max_retries:
+                    _log(
+                        f"  [!] BILL IMG: attempt {attempt + 1} failed for {order_code}: {exc}"
+                        f" — reloading and retrying..."
+                    )
+                    try:
+                        reload_btn = self.page.locator("i.tdsi-sync-fill").first
+                        if reload_btn.count() > 0:
+                            reload_btn.click(timeout=self._cfg.click_timeout)
+                    except Exception:
+                        pass
+                    self.page.wait_for_timeout(retry_delay_ms)
+                else:
+                    _log(
+                        f"  [!] BILL IMG: send failed for {order_code}"
+                        f" after {max_retries + 1} attempt(s): {exc}"
+                    )
+
+        return False
 
     def _read_partner_name(self) -> str:
         """Read partner name from the chat/message panel label."""
@@ -1097,7 +1117,7 @@ class OrderPage:
             # If the textarea detached or can no longer be read, the reply box likely closed after send.
             return True
 
-    def _reply_comment_fallback(self, partner_name: str, campaign_label: str = "") -> bool:
+    def _reply_comment_fallback(self, partner_name: str, campaign_label: str = "", templates: list | None = None) -> bool:
         """Reply to the first comment of the FB post matching campaign_label date (latest time on that day)."""
         try:
             from datetime import datetime as _dt, date as _date
@@ -1219,7 +1239,8 @@ class OrderPage:
                 return False
 
             name = partner_name or "bạn"
-            template = random.choice(self._cfg.comment_fallback_templates)
+            tpl_list = templates if templates else self._cfg.comment_fallback_templates
+            template = random.choice(tpl_list)
             fallback_msg = template.format(name=name)
 
             reply_textarea.click(timeout=self._cfg.click_timeout)
@@ -1264,12 +1285,12 @@ class OrderPage:
             _log(f"  [!] Stack trace:\n{traceback.format_exc()}")
             return False
 
-    def _reply_comment_with_retry(self, partner_name: str, campaign_label: str = "") -> bool:
+    def _reply_comment_with_retry(self, partner_name: str, campaign_label: str = "", templates: list | None = None) -> bool:
         """Call _reply_comment_fallback with retry on failure (bot.comment_reply_max_retries)."""
         max_retries = self._cfg.comment_reply_max_retries
         for attempt in range(1, max_retries + 2):  # +2: 1 initial + max_retries extras
             try:
-                ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
+                ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label, templates=templates)
             except Exception as exc:
                 _log(f"  [!] Comment reply attempt {attempt}/{max_retries + 1} error: {exc}")
                 ok = False
@@ -1281,13 +1302,19 @@ class OrderPage:
         return False
 
     def _build_ask_address_message(self, partner_name: str = "") -> str:
-        """MESS 1: Ask for address (no-address cases)."""
+        """ask address: Ask for address (no-address cases)."""
         template = random.choice(self._cfg.ask_address_templates)
         name = partner_name or "bạn"
         return template.format(name=name)
 
+    def _build_ask_address_no_product_message(self, partner_name: str = "") -> str:
+        """ask address (case 2.3): Ask for address when no products in order list."""
+        template = random.choice(self._cfg.ask_address_no_product_templates)
+        name = partner_name or "bạn"
+        return template.format(name=name)
+
     def _build_deposit_message(self, partner_name: str = "") -> str:
-        """MESS 2: Ask for deposit (cases 1.1, 2.1)."""
+        """ask deposit: Ask for deposit (cases 1.1, 2.1)."""
         name = partner_name or "bạn"
         return self._cfg.deposit_template.format(name=name)
 
@@ -1581,20 +1608,24 @@ class OrderPage:
                                 oos_msg = self._build_oos_message(oos_products, partner_name)
                                 self._send_in_panel(oos_msg, None, order_code)
 
-                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.3)
+                            # ask address (no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            # TAG 2.3: no products → use dedicated no-product template
                             # For TAG 2.2: only ask if there are in-stock products
                             # For TAG 2.4: only ask if there are in-stock products
                             if self._cfg.enable_send_message:
-                                if resolved_tag in (TAG_2, TAG_2_1, TAG_2_3):
+                                if resolved_tag == TAG_2_3:
+                                    ask_msg = self._build_ask_address_no_product_message(partner_name)
+                                    self._send_in_panel(ask_msg, None, order_code)
+                                elif resolved_tag in (TAG_2, TAG_2_1):
                                     ask_msg = self._build_ask_address_message(partner_name)
                                     self._send_in_panel(ask_msg, None, order_code)
                                 elif resolved_tag in (TAG_2_2, TAG_2_4) and in_stock_count > 0:
                                     ask_msg = self._build_ask_address_message(partner_name)
                                     self._send_in_panel(ask_msg, None, order_code)
                                 elif resolved_tag in (TAG_2_2, TAG_2_4):
-                                    _log(f"  SKIP MESS 1: all products OOS, no point asking address")
+                                    _log(f"  SKIP ask address: all products OOS, no point asking address")
 
-                            # MESS 2: deposit message (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
+                            # ask deposit (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
                             if self._cfg.enable_send_message:
                                 if resolved_tag in (TAG_1_1, TAG_2_1):
                                     deposit_msg = self._build_deposit_message(partner_name)
@@ -1603,9 +1634,10 @@ class OrderPage:
                                     deposit_msg = self._build_deposit_message(partner_name)
                                     self._send_in_panel(deposit_msg, None, order_code)
 
-                            # MESS 3: reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
-                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
-                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
+                            # reply comment (TAG 1, 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1, TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
+                                _tpls = self._cfg.comment_order_done_templates if resolved_tag == TAG_1 else None
+                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label, templates=_tpls)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
 
@@ -1872,20 +1904,24 @@ class OrderPage:
                                 oos_msg = self._build_oos_message(oos_products, partner_name)
                                 self._send_in_panel(oos_msg, None, order_code)
 
-                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.3)
+                            # ask address (no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            # TAG 2.3: no products → use dedicated no-product template
                             # For TAG 2.2: only ask if there are in-stock products
                             # For TAG 2.4: only ask if there are in-stock products
                             if self._cfg.enable_send_message:
-                                if resolved_tag in (TAG_2, TAG_2_1, TAG_2_3):
+                                if resolved_tag == TAG_2_3:
+                                    ask_msg = self._build_ask_address_no_product_message(partner_name)
+                                    self._send_in_panel(ask_msg, None, order_code)
+                                elif resolved_tag in (TAG_2, TAG_2_1):
                                     ask_msg = self._build_ask_address_message(partner_name)
                                     self._send_in_panel(ask_msg, None, order_code)
                                 elif resolved_tag in (TAG_2_2, TAG_2_4) and in_stock_count > 0:
                                     ask_msg = self._build_ask_address_message(partner_name)
                                     self._send_in_panel(ask_msg, None, order_code)
                                 elif resolved_tag in (TAG_2_2, TAG_2_4):
-                                    _log(f"  SKIP MESS 1: all products OOS, no point asking address")
+                                    _log(f"  SKIP ask address: all products OOS, no point asking address")
 
-                            # MESS 2: deposit message (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
+                            # ask deposit (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
                             if self._cfg.enable_send_message:
                                 if resolved_tag in (TAG_1_1, TAG_2_1):
                                     deposit_msg = self._build_deposit_message(partner_name)
@@ -1894,9 +1930,10 @@ class OrderPage:
                                     deposit_msg = self._build_deposit_message(partner_name)
                                     self._send_in_panel(deposit_msg, None, order_code)
 
-                            # MESS 3: reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
-                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
-                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
+                            # reply comment (TAG 1, 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1, TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
+                                _tpls = self._cfg.comment_order_done_templates if resolved_tag == TAG_1 else None
+                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label, templates=_tpls)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"
                                 if comment_ok:
                                     _log(f"  COMMENT REPLY OK: order={order_code}")

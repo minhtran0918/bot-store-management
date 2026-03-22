@@ -12,6 +12,7 @@ from app.config_loader import load_config
 from app.cli_helpers import (
     FEATURE_CONFIRM_ORDER,
     FEATURE_ADD_PRODUCT,
+    FEATURE_BROADCAST_ORDER,
     prompt_campaign_label,
     prompt_price_code_mapping,
     prompt_existing_csv_required,
@@ -52,6 +53,11 @@ def main():
     show_banner()
 
     feature_run = prompt_feature_run()
+
+    if feature_run == FEATURE_BROADCAST_ORDER:
+        from broadcast_order.dashboard.server import run_server
+        run_server()
+        return
 
     try:
         campaign_label = prompt_campaign_label()
