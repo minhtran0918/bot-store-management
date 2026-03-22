@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Feed — Display</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Be+Vietnam+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0c10; --surface:#111318; --surface2:#181b22; --border:#1e2230;
+    --accent:#00e5a0; --accent2:#ff6b6b; --accent3:#ffd166; --accent4:#5b9cf6;
+    --text:#e8eaf2; --dim:#6b7280; --muted:#3d4455;
+    --ok:#00e5a0; --pending:#ffd166; --cancel:#ff6b6b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Be Vietnam Pro',sans-serif;min-height:100vh}
+  body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:1000}
+
+  /* Header */
+  .hdr{position:sticky;top:0;z-index:100;background:rgba(10,12,16,.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .hdr-l{display:flex;align-items:center;gap:12px}
+  .shop{font-family:'Space Mono',monospace;font-size:14px;color:var(--accent);letter-spacing:.06em;text-transform:uppercase}
+  .live-badge{display:flex;align-items:center;gap:5px;background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);border-radius:4px;padding:3px 9px;font-family:'Space Mono',monospace;font-size:10px;color:var(--accent);letter-spacing:.08em}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 1.5s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.7)}}
+  .hdr-r{display:flex;align-items:center;gap:20px}
+  .stats{display:flex;gap:18px}
+  .stat{display:flex;flex-direction:column;align-items:flex-end}
+  .sv{font-family:'Space Mono',monospace;font-size:20px;font-weight:700;line-height:1}
+  .sl{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+  .sm .sv{color:var(--accent4)} .sc .sv{color:var(--accent)} .so .sv{color:var(--accent3)} .stag .sv{color:var(--accent2)}
+  .clock{font-family:'Space Mono',monospace;font-size:12px;color:var(--dim);text-align:right;line-height:1.7}
+
+  /* Status */
+  .sbar{background:var(--surface);border-bottom:1px solid var(--border);padding:6px 24px;display:flex;align-items:center;gap:10px;font-family:'Space Mono',monospace;font-size:10px;color:var(--dim)}
+  .sdot{width:5px;height:5px;border-radius:50%;background:var(--accent)}
+  .sdot.err{background:var(--accent2)} .sdot.loading{background:var(--accent3);animation:pulse .8s infinite}
+  .stxt{color:var(--accent)} .stxt.err{color:var(--accent2)}
+
+  /* Feed */
+  .feed{max-width:860px;margin:0 auto;padding:16px 16px 60px}
+  .empty{text-align:center;padding:80px 20px;color:var(--muted);font-family:'Space Mono',monospace;font-size:13px}
+  .date-div{display:flex;align-items:center;gap:10px;margin:18px 0 10px}
+  .date-div span{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em;white-space:nowrap}
+  .date-div::before,.date-div::after{content:'';flex:1;height:1px;background:var(--border)}
+
+  /* Card */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;margin-bottom:8px;overflow:hidden;transition:border-color .3s,box-shadow .3s;animation:slideIn .3s ease-out}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+  .card.tag-ok{border-left:3px solid var(--ok)}
+  .card.tag-pending{border-left:3px solid var(--pending)}
+  .card.tag-cancel{border-left:3px solid var(--cancel)}
+  .card-inner{padding:12px 14px}
+  .card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .card-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .ttag{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:2px 7px;border-radius:3px}
+  .ttag.comment{background:rgba(0,229,160,.1);color:var(--ok);border:1px solid rgba(0,229,160,.2)}
+  .ttag.message{background:rgba(91,156,246,.1);color:var(--accent4);border:1px solid rgba(91,156,246,.2)}
+  .sender{font-size:13px;font-weight:600}
+  .sender.shop{color:var(--accent4)}
+  .ctime{font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);white-space:nowrap;flex-shrink:0}
+  .msg{font-size:13.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word}
+  .msg.shop-msg{color:#9ba8c0}
+  .msg.cmt-msg{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;color:var(--accent);letter-spacing:.05em}
+  .order-badge{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:4px 9px;background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.15);border-radius:4px;font-family:'Space Mono',monospace;font-size:11px;color:var(--accent3)}
+  .err-notice{display:flex;align-items:center;gap:5px;margin-top:8px;padding:5px 9px;background:rgba(255,107,107,.05);border:1px solid rgba(255,107,107,.15);border-radius:4px;font-size:11px;color:var(--accent2)}
+  .tag-status{display:inline-flex;align-items:center;gap:5px;margin-top:8px;padding:4px 9px;border-radius:4px;font-family:'Space Mono',monospace;font-size:11px;font-weight:700;letter-spacing:.05em}
+  .tag-status.ok{background:rgba(0,229,160,.08);border:1px solid rgba(0,229,160,.2);color:var(--ok)}
+  .tag-status.pending{background:rgba(255,209,102,.08);border:1px solid rgba(255,209,102,.2);color:var(--pending)}
+  .tag-status.cancel{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.2);color:var(--cancel)}
+  .tag-note{font-size:11px;color:var(--dim);margin-top:4px;font-style:italic}
+  .src-post{margin-top:7px;padding:4px 9px;background:var(--surface2);border-radius:4px;font-size:11px;color:var(--muted);border-left:2px solid var(--border)}
+  img.att{display:block;max-width:180px;max-height:120px;border-radius:5px;margin-top:8px;border:1px solid var(--border);object-fit:cover}
+
+  /* Sample */
+  .sample-notice{background:rgba(255,154,60,.08);border:1px solid rgba(255,154,60,.2);border-radius:6px;padding:9px 14px;margin-bottom:14px;font-size:11px;color:#ff9a3c;font-family:'Space Mono',monospace}
+
+  /* Ticker */
+  .ticker{position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:7px 20px;font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);overflow:hidden;white-space:nowrap;z-index:50}
+  .ticker-inner{display:inline-block;animation:ticker 50s linear infinite}
+  @keyframes ticker{0%{transform:translateX(100vw)}100%{transform:translateX(-100%)}}
+  .ti{margin-right:50px} .ti .hi{color:var(--accent)} .ti .sep{color:var(--muted);margin:0 7px}
+
+  ::-webkit-scrollbar{width:3px} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-l">
+    <span class="shop">Linh Đan Shop</span>
+    <div class="live-badge"><div class="dot"></div>LIVE</div>
+  </div>
+  <div class="hdr-r">
+    <div class="stats">
+      <div class="stat sm"><span class="sv" id="s-msg">—</span><span class="sl">Tin nhắn</span></div>
+      <div class="stat sc"><span class="sv" id="s-cmt">—</span><span class="sl">Bình luận</span></div>
+      <div class="stat so"><span class="sv" id="s-ord">—</span><span class="sl">Đơn hàng</span></div>
+      <div class="stat stag"><span class="sv" id="s-tag">—</span><span class="sl">Đã tag</span></div>
+    </div>
+    <div class="clock">
+      <div id="clock">--:--:--</div>
+      <div style="font-size:10px;color:var(--muted)" id="upd">—</div>
+    </div>
+  </div>
+</div>
+
+<div class="sbar">
+  <div class="sdot loading" id="sdot"></div>
+  <span id="stxt" class="stxt">Đang kết nối...</span>
+  <span style="color:var(--muted)">•</span>
+  <span id="cnt">0 mục</span>
+</div>
+
+<div class="feed" id="feed">
+  <div class="empty">⠋ Đang chờ dữ liệu...</div>
+</div>
+
+<div class="ticker"><div class="ticker-inner" id="ticker">
+  <span class="ti">🟢 <span class="hi">LIVE FEED</span><span class="sep">—</span>Đang chờ dữ liệu...</span>
+</div></div>
+
+<script>
+const WS_URL = `ws://${location.hostname}:8765`;
+let state = { messages: null, tags: {} };
+
+// ── Helpers ──────────────────────────────────────────────────
+const esc = s => s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+const fmtTime = iso => { try { return new Date(iso).toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit',hour12:false}); } catch{ return iso||'—'; }};
+const fmtDate = iso => { try { return new Date(iso).toLocaleDateString('vi-VN',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric'}); } catch{ return ''; }};
+const dateKey = iso => iso ? iso.substring(0,10) : '';
+
+function getSender(item) {
+  if (item.IsOwner) return item.ApplicationUser?.Name || 'Shop';
+  return 'Khách hàng';
+}
+
+// ── Render ────────────────────────────────────────────────────
+function renderFeed() {
+  const data = state.messages;
+  const tags = state.tags;
+  if (!data) return;
+  const items = data.Data || [];
+  const feed = document.getElementById('feed');
+
+  // Stats
+  document.getElementById('s-msg').textContent = items.filter(i=>i.Type==='message').length;
+  document.getElementById('s-cmt').textContent = items.filter(i=>i.Type==='comment').length;
+  document.getElementById('s-ord').textContent = items.reduce((a,i)=>a+(i.Order?.Count||0),0);
+  document.getElementById('s-tag').textContent = Object.keys(tags).length;
+  document.getElementById('cnt').textContent = `${items.length} mục`;
+  document.getElementById('upd').textContent = new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',hour12:false});
+
+  if (!items.length) { feed.innerHTML='<div class="empty">Chưa có dữ liệu</div>'; return; }
+
+  let html = data.is_sample ? `<div class="sample-notice">⚠ Dữ liệu mẫu — điền API_URL thật vào server.py</div>` : '';
+  let lastDate = null;
+
+  for (const item of items) {
+    const dk = dateKey(item.CreatedTime);
+    if (dk !== lastDate) { html += `<div class="date-div"><span>${fmtDate(item.CreatedTime)}</span></div>`; lastDate = dk; }
+
+    const tag = tags[item.Id];
+    const isComment = item.Type === 'comment';
+    const isOwner = item.IsOwner;
+    const msg = item.Message || item.MessageFormatted || '';
+
+    // Tag status HTML
+    let tagHtml = '';
+    if (tag) {
+      const icons = {ok:'✅', pending:'⏳', cancel:'❌'};
+      const labels = {ok:'OK — Đã xử lý', pending:'Đang chờ', cancel:'Đã huỷ'};
+      tagHtml = `<div class="tag-status ${tag.status}">${icons[tag.status]||''} ${labels[tag.status]||tag.status}</div>`;
+      if (tag.note) tagHtml += `<div class="tag-note">"${esc(tag.note)}"</div>`;
+    }
+
+    // Order
+    let ordHtml = '';
+    if (item.Order?.Count > 0) {
+      const codes = (item.Order.Data||[]).map(o=>`#${o.Code}`).join(', ');
+      ordHtml = `<div class="order-badge">🛒 ${esc(codes)}</div>`;
+    }
+
+    // Error
+    let errHtml = item.Error ? `<div class="err-notice">⚠ Gửi thất bại — ngoài giờ cho phép</div>` : '';
+
+    // Attachment
+    let attHtml = '';
+    for (const att of (item.Attachments||[])) {
+      if (att.Type==='image' && att.Payload?.Url) attHtml += `<img class="att" src="${esc(att.Payload.Url)}" loading="lazy" alt="">`;
+    }
+
+    // Source
+    let srcHtml = '';
+    if (isComment && item.Object) {
+      const desc = item.Object.Description || item.Object.Title || '';
+      const camp = item.Object.LiveCampaign?.Name || '';
+      srcHtml = `<div class="src-post">📺 <strong>${esc(camp)}</strong>${desc ? ` — ${esc(desc)}` : ''}</div>`;
+    }
+
+    const cardClass = tag ? `card tag-${tag.status}` : 'card';
+    const msgClass  = isComment ? 'msg cmt-msg' : (isOwner ? 'msg shop-msg' : 'msg');
+
+    html += `
+<div class="${cardClass}" data-id="${item.Id}">
+  <div class="card-inner">
+    <div class="card-head">
+      <div class="card-meta">
+        <span class="ttag ${item.Type}">${item.Type}</span>
+        <span class="sender ${isOwner?'shop':''}">${esc(getSender(item))}</span>
+      </div>
+      <span class="ctime">${fmtTime(item.CreatedTime)}</span>
+    </div>
+    ${msg ? `<div class="${msgClass}">${esc(msg)}</div>` : ''}
+    ${attHtml}${srcHtml}${ordHtml}${tagHtml}${errHtml}
+  </div>
+</div>`;
+  }
+
+  feed.innerHTML = html;
+
+  // Ticker
+  const tickerItems = items.filter(i=>i.Message).slice(0,8).map(i=>{
+    const preview = (i.Message||'').replace(/\n/g,' ').substring(0,50);
+    const tag = state.tags[i.Id];
+    const tagStr = tag ? ` [${tag.status.toUpperCase()}]` : '';
+    return `<span class="ti"><span class="hi">${esc(getSender(i))}</span><span class="sep">›</span>${esc(preview)}${tagStr}</span>`;
+  }).join('');
+  document.getElementById('ticker').innerHTML = tickerItems || '<span class="ti">Chưa có tin nhắn</span>';
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+function setStatus(s, txt) {
+  const d = document.getElementById('sdot');
+  const t = document.getElementById('stxt');
+  d.className = `sdot ${s}`;
+  t.className = `stxt${s==='err'?' err':''}`;
+  t.textContent = txt;
+}
+
+function connect() {
+  setStatus('loading', 'Đang kết nối...');
+  const ws = new WebSocket(WS_URL);
+
+  ws.onopen = () => setStatus('', 'Kết nối thành công');
+
+  ws.onmessage = e => {
+    try {
+      const { event, data } = JSON.parse(e.data);
+      if (event === 'update') { state.messages = data.messages; state.tags = data.tags || {}; }
+      if (event === 'tags')   { state.tags = data; }
+      renderFeed();
+    } catch {}
+  };
+
+  ws.onclose = () => { setStatus('err', 'Mất kết nối — thử lại 5s...'); setTimeout(connect, 5000); };
+  ws.onerror = () => ws.close();
+}
+
+// ── Clock ─────────────────────────────────────────────────────
+setInterval(() => {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+}, 1000);
+
+connect();
+</script>
+</body>
+</html>

@@ -116,3 +116,12 @@ auth:
 debug:
   keep_open: true
   keep_open_seconds: 180
+
+# ─── Broadcast Order — Live Feed Server ──────────────────────────────────────
+broadcast_order:
+  http_port: 8080          # HTTP port for serving display.html / control.html in browser
+  ws_port: 8765            # WebSocket port (HTML clients connect here)
+  fetch_interval: 60       # API fetch interval in seconds. 60 = every 1 minute.
+  api_url: ""              # API endpoint for messages/orders (leave empty if not configured yet)
+  api_headers: {}          # Extra headers sent with each request. E.g. {"X-App": "tpos"}
+  tags_file: "data/broadcast_tags.json"   # Persistent storage for order tag states

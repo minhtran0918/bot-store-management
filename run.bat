@@ -30,6 +30,13 @@ if %errorlevel% neq 0 (
     )
 )
 
+REM Install/update dependencies after pull
+echo Installing dependencies...
+python -m pip install -r requirements.txt --quiet
+if %errorlevel% neq 0 (
+    echo [WARN] pip install failed, continuing with existing packages.
+)
+
 REM Show version (last commit)
 git log -1 --format="Version: %%h - %%s (%%ci)" 2>nul
 echo.

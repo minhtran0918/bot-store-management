@@ -2,3 +2,4 @@ playwright
 PyYAML
 Pillow
 InquirerPy
+websockets
