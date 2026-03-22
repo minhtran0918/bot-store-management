@@ -937,60 +937,80 @@ class OrderPage:
         """Send bill image within the open message panel.
 
         Steps: click 'Phiếu bán hàng' → first item three-dots → 'Gửi ảnh phiếu bán hàng'
-        → wait for image to load → send.
+        → wait for image to load → send. Retries with reload button on failure.
         """
-        try:
-            # Click "Phiếu bán hàng" button (file icon)
-            bill_btn = self.page.locator(
-                "button[tooltiptitle='Phiếu bán hàng'], "
-                "button:has(i.tdsi-file-line)"
-            ).first
-            if bill_btn.count() == 0:
-                _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
-                return False
-            bill_btn.click(timeout=self._cfg.click_timeout)
-            self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+        max_retries = self._cfg.bill_reload_retry_count
+        retry_delay_ms = self._cfg.bill_reload_retry_delay_ms
 
-            # Click three-dots button (span with tdsi-three-dots-horizon-fill icon)
-            three_dots_btn = self.page.locator(
-                "span.flex.items-center:has(i.tdsi-three-dots-horizon-fill)"
-            ).first
-            if three_dots_btn.count() == 0:
-                _log(f"  [!] BILL IMG: three-dots button not found for {order_code}")
-                return False
-            three_dots_btn.click(timeout=self._cfg.click_timeout)
-            self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
-
-            # Click "Gửi ảnh phiếu bán hàng" from popup
-            send_bill_img_btn = self.page.locator(
-                "span:has(i.tdsi-images-fill):has-text('Gửi ảnh phiếu bán hàng')"
-            ).first
-            if send_bill_img_btn.count() == 0:
-                # Fallback: text-based match
-                send_bill_img_btn = self.page.locator("text=Gửi ảnh phiếu bán hàng").first
-            if send_bill_img_btn.count() == 0:
-                _log(f"  [!] BILL IMG: 'Gửi ảnh phiếu bán hàng' not found for {order_code}")
-                return False
-            send_bill_img_btn.click(timeout=self._cfg.click_timeout)
-
-            # Wait for the bill list modal to disappear (returns to message panel)
+        for attempt in range(max_retries + 1):
             try:
-                self.page.wait_for_selector(
-                    "app-modal-list-bill", state="hidden", timeout=self._cfg.spinner_hide_ms
-                )
-            except Exception:
-                pass  # modal may already be gone
-            self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                # Click "Phiếu bán hàng" button (file icon)
+                bill_btn = self.page.locator(
+                    "button[tooltiptitle='Phiếu bán hàng'], "
+                    "button:has(i.tdsi-file-line)"
+                ).first
+                if bill_btn.count() == 0:
+                    _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
+                    return False
+                bill_btn.click(timeout=self._cfg.click_timeout)
+                self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
 
-            # Send the message with bill image
-            self._click_send_button_reliable(order_code)
-            self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                # Click three-dots button (span with tdsi-three-dots-horizon-fill icon)
+                three_dots_btn = self.page.locator(
+                    "span.flex.items-center:has(i.tdsi-three-dots-horizon-fill)"
+                ).first
+                if three_dots_btn.count() == 0:
+                    raise RuntimeError("three-dots button not found")
+                three_dots_btn.click(timeout=self._cfg.click_timeout)
+                self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
 
-            _log(f"  BILL IMG: sent for {order_code}")
-            return True
-        except Exception as exc:
-            _log(f"  [!] BILL IMG: send failed for {order_code}: {exc}")
-            return False
+                # Click "Gửi ảnh phiếu bán hàng" from popup
+                send_bill_img_btn = self.page.locator(
+                    "span:has(i.tdsi-images-fill):has-text('Gửi ảnh phiếu bán hàng')"
+                ).first
+                if send_bill_img_btn.count() == 0:
+                    # Fallback: text-based match
+                    send_bill_img_btn = self.page.locator("text=Gửi ảnh phiếu bán hàng").first
+                if send_bill_img_btn.count() == 0:
+                    raise RuntimeError("'Gửi ảnh phiếu bán hàng' not found")
+                send_bill_img_btn.click(timeout=self._cfg.click_timeout)
+
+                # Wait for the bill list modal to disappear (returns to message panel)
+                try:
+                    self.page.wait_for_selector(
+                        "app-modal-list-bill", state="hidden", timeout=self._cfg.spinner_hide_ms
+                    )
+                except Exception:
+                    pass  # modal may already be gone
+                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+                # Send the message with bill image
+                self._click_send_button_reliable(order_code)
+                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+
+                _log(f"  BILL IMG: sent for {order_code}")
+                return True
+
+            except Exception as exc:
+                if attempt < max_retries:
+                    _log(
+                        f"  [!] BILL IMG: attempt {attempt + 1} failed for {order_code}: {exc}"
+                        f" — reloading and retrying..."
+                    )
+                    try:
+                        reload_btn = self.page.locator("i.tdsi-sync-fill").first
+                        if reload_btn.count() > 0:
+                            reload_btn.click(timeout=self._cfg.click_timeout)
+                    except Exception:
+                        pass
+                    self.page.wait_for_timeout(retry_delay_ms)
+                else:
+                    _log(
+                        f"  [!] BILL IMG: send failed for {order_code}"
+                        f" after {max_retries + 1} attempt(s): {exc}"
+                    )
+
+        return False
 
     def _read_partner_name(self) -> str:
         """Read partner name from the chat/message panel label."""

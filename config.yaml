@@ -10,6 +10,7 @@ bot:
   reload_every_n_orders: 4      # Reload page every N processed orders to free memory. Set to 0 to disable.
   low_delivery_rate_pct: 60     # Delivery success rate threshold (%). Below this → TAG 0 (skip). 0/0 = OK.
   comment_reply_max_retries: 2  # Retry comment reply this many times on failure (0 = no retry).
+  bill_reload_retry_count: 2   # Retry sending bill image this many times after reload on failure (0 = no retry).
 
 # ─── Feature flags ───────────────────────────────────────────────────────────
 features:
@@ -46,6 +47,7 @@ timeouts:
   tag_backspace: 100     # Wait after backspace clearing tags
   bill_create_step: 1000 # Wait between steps when creating sales bill (Lưu nháp)
   bill_image_load: 1500  # Wait for bill image to load into message box
+  bill_reload_retry_delay: 2000 # Wait after clicking reload before retrying bill image send
 
 # ─── Business messages ───────────────────────────────────────────────────────
 messages:
@@ -128,9 +130,9 @@ debug:
 
 # ─── Broadcast Order — Live Feed Server ──────────────────────────────────────
 broadcast_order:
-  http_port: 8080          # HTTP port for serving display.html / control.html in browser
+  http_port: 8888          # HTTP port for serving display.html / control.html in browser
   ws_port: 8765            # WebSocket port (HTML clients connect here)
   fetch_interval: 60       # API fetch interval in seconds. 60 = every 1 minute.
   api_url: ""              # API endpoint for messages/orders (leave empty if not configured yet)
   api_headers: {}          # Extra headers sent with each request. E.g. {"X-App": "tpos"}
-  tags_file: "data/broadcast_tags.json"   # Persistent storage for order tag states
+  # Tag states are saved to data/broadcast/tags.json (persists across restarts).

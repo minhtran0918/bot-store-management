@@ -26,7 +26,7 @@ class BotConfig:
         "pagination", "filter_search", "filter_apply", "escape_close",
         "table_load", "spinner_hide", "error_recheck", "comment_reply_post",
         "notification_click", "inner_text_read", "tag_clear", "tag_backspace",
-        "bill_create_step", "bill_image_load",
+        "bill_create_step", "bill_image_load", "bill_reload_retry_delay",
     ]
 
     # Required message keys — must all be present in config.yaml messages section
@@ -115,6 +115,14 @@ class BotConfig:
             return max(0, min(100, int(self._bot.get("low_delivery_rate_pct", 60))))
         except (TypeError, ValueError):
             return 60
+
+    @property
+    def bill_reload_retry_count(self) -> int:
+        """Number of extra retry attempts for bill image send after reload (0 = no retry)."""
+        try:
+            return max(0, int(self._bot.get("bill_reload_retry_count", 0)))
+        except (TypeError, ValueError):
+            return 0
 
     # ------------------------------------------------------------------
     # Keywords / lists
@@ -285,6 +293,11 @@ class BotConfig:
     def bill_image_load_ms(self) -> int:
         """Wait for bill image to load into message box."""
         return self._t("bill_image_load")
+
+    @property
+    def bill_reload_retry_delay_ms(self) -> int:
+        """Wait after clicking reload before retrying bill image send."""
+        return self._t("bill_reload_retry_delay")
 
     # ------------------------------------------------------------------
     # Message templates
