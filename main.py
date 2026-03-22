@@ -55,8 +55,8 @@ def main():
     feature_run = prompt_feature_run()
 
     if feature_run == FEATURE_BROADCAST_ORDER:
-        from broadcast_order.server import run_broadcast_server
-        run_broadcast_server(BASE_DIR, log_console)
+        from broadcast_order.dashboard.server import run_server
+        run_server()
         return
 
     try:

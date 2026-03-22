@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bảng điều khiển</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    min-height: 100vh;
+  }
+
+  /* ---- Header ---- */
+  header {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .shop-name { font-size: 17px; font-weight: 700; color: #58a6ff; }
+  .header-right { display: flex; align-items: center; gap: 12px; font-size: 13px; }
+  .ws-badge { display: flex; align-items: center; gap: 5px; color: #8b949e; }
+  .ws-dot { width: 8px; height: 8px; border-radius: 50%; background: #f85149; }
+  .ws-dot.connected { background: #3fb950; }
+  #clock { color: #8b949e; font-size: 13px; font-variant-numeric: tabular-nums; }
+
+  /* ---- Buttons ---- */
+  .btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid #30363d;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn-primary   { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .btn-primary:hover { background: #388bfd; }
+  .btn-default   { background: #21262d; color: #c9d1d9; }
+  .btn-default:hover { background: #30363d; }
+  .btn-danger    { background: transparent; color: #f85149; border-color: #f85149; }
+  .btn-danger:hover { background: #3d0c10; }
+  .btn-sm { padding: 4px 10px; font-size: 12px; }
+
+  /* ---- Main layout ---- */
+  .main { max-width: 960px; margin: 0 auto; padding: 20px; }
+
+  /* ---- Section cards ---- */
+  .section-card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    margin-bottom: 20px;
+  }
+  .section-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid #30363d;
+    font-weight: 600;
+    font-size: 14px;
+    color: #c9d1d9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .section-body { padding: 16px 18px; }
+
+  /* ---- Search form ---- */
+  .search-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group label { font-size: 12px; color: #8b949e; }
+  .form-group input {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e6edf3;
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+  }
+  .form-group input:focus { border-color: #58a6ff; }
+
+  /* ---- Search results table ---- */
+  .results-table-wrap { margin-top: 14px; overflow-x: auto; }
+  .results-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .results-table th {
+    background: #0d1117;
+    color: #8b949e;
+    font-size: 11px;
+    text-transform: uppercase;
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid #30363d;
+  }
+  .results-table td { padding: 8px 10px; border-bottom: 1px solid #21262d; }
+  .results-table tr:last-child td { border-bottom: none; }
+  .result-empty { text-align: center; padding: 24px; color: #484f58; font-style: italic; }
+
+  /* ---- Filter tabs ---- */
+  .filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tab-btn {
+    padding: 5px 12px;
+    border-radius: 20px;
+    border: 1px solid #30363d;
+    background: transparent;
+    color: #8b949e;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .tab-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+  .tab-btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+  /* ---- Monitor cards ---- */
+  .monitor-card {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    transition: border-color 0.15s;
+  }
+  .monitor-card:hover { border-color: #484f58; }
+  .monitor-card.card-red    { border-left: 3px solid #f85149; }
+  .monitor-card.card-yellow { border-left: 3px solid #d29922; }
+
+  .card-top {
+    padding: 12px 16px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .card-title { display: flex; flex-direction: column; gap: 4px; }
+  .card-ref { font-family: monospace; color: #58a6ff; font-size: 14px; font-weight: 700; }
+  .card-name { font-size: 14px; font-weight: 600; }
+  .card-date { font-size: 12px; color: #8b949e; }
+  .card-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+  /* Badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge-high     { background: #3d0c10; color: #f85149; }
+  .badge-normal   { background: #1c2d3c; color: #58a6ff; }
+  .badge-low      { background: #1c2d1c; color: #3fb950; }
+  .badge-pending  { background: #21262d; color: #8b949e; }
+  .badge-proc     { background: #1c2d3c; color: #58a6ff; }
+  .badge-done     { background: #1c2d1c; color: #3fb950; }
+
+  .unread-time { font-size: 13px; white-space: nowrap; }
+  .unread-ok     { color: #3fb950; }
+  .unread-warn   { color: #d29922; }
+  .unread-danger { color: #f85149; font-weight: 700; }
+
+  /* Messages */
+  .card-msgs {
+    padding: 0 16px 8px;
+  }
+  .msg-list { display: flex; flex-direction: column; gap: 4px; }
+  .bubble {
+    padding: 4px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    max-width: 85%;
+    word-break: break-word;
+  }
+  .bubble-customer { background: #21262d; color: #c9d1d9; align-self: flex-start; border-bottom-left-radius: 3px; }
+  .bubble-shop     { background: #1f3a5f; color: #a5d3ff; align-self: flex-end; border-bottom-right-radius: 3px; }
+  .bubble-meta { font-size: 10px; color: #8b949e; margin-bottom: 1px; }
+  .no-msg { color: #484f58; font-style: italic; font-size: 12px; padding: 4px 0; }
+
+  .collapse-btn {
+    background: none;
+    border: none;
+    color: #58a6ff;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 0;
+    font-family: inherit;
+  }
+  .collapse-btn:hover { text-decoration: underline; }
+  .full-thread { display: none; }
+  .full-thread.open { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+
+  /* Controls */
+  .card-controls {
+    padding: 12px 16px;
+    border-top: 1px solid #21262d;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .control-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .control-label { font-size: 12px; color: #8b949e; min-width: 72px; }
+
+  .ctrl-select {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e6edf3;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .ctrl-select:focus { outline: none; border-color: #58a6ff; }
+
+  .btn-group { display: flex; gap: 4px; }
+  .btn-group .btn-sm { border-radius: 6px; }
+  .btn-group .btn-sm.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+  .note-input {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #e6edf3;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    flex: 1;
+    min-width: 140px;
+  }
+  .note-input:focus { outline: none; border-color: #58a6ff; }
+
+  .save-indicator { font-size: 11px; color: #3fb950; display: none; }
+  .save-indicator.show { display: inline; }
+
+  /* Monitored badge for search results */
+  .monitored-badge { font-size: 11px; color: #3fb950; }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #484f58;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="shop-name" id="shopName">Đang tải...</div>
+  <div class="header-right">
+    <button class="btn btn-default btn-sm" onclick="sendRefresh()">↻ Làm mới ngay</button>
+    <span id="lastUpdated" style="color:#8b949e;font-size:12px;">—</span>
+    <div class="ws-badge">
+      <div class="ws-dot" id="wsDot"></div>
+      <span id="wsStatus">Đang kết nối...</span>
+    </div>
+    <span id="clock">--:--:--</span>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- Add Order Section -->
+  <div class="section-card">
+    <div class="section-header">Tìm & thêm đơn theo dõi</div>
+    <div class="section-body">
+      <div class="search-row">
+        <div class="form-group">
+          <label>Từ ngày</label>
+          <input type="date" id="dateFrom">
+        </div>
+        <div class="form-group">
+          <label>Đến ngày</label>
+          <input type="date" id="dateTo">
+        </div>
+        <div class="form-group" style="flex:1;min-width:180px">
+          <label>Tên / SĐT / Mã đơn</label>
+          <input type="text" id="searchQuery" placeholder="Nhập để tìm..." onkeydown="if(event.key==='Enter')doSearch()">
+        </div>
+        <div class="form-group" style="justify-content:flex-end">
+          <button class="btn btn-primary" onclick="doSearch()">🔍 Tìm đơn</button>
+        </div>
+      </div>
+      <div class="results-table-wrap" id="searchResults" style="display:none">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th>Mã đơn</th>
+              <th>Khách hàng</th>
+              <th>Ngày</th>
+              <th>SĐT</th>
+              <th>COD</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="searchBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Monitor List -->
+  <div class="section-card">
+    <div class="section-header">
+      <span>Danh sách theo dõi <span id="totalCount" style="color:#8b949e;font-weight:400;font-size:13px"></span></span>
+    </div>
+    <div class="section-body" style="padding-top:12px">
+      <div class="filter-tabs" id="filterTabs">
+        <button class="tab-btn active" data-filter="all" onclick="setFilter('all',this)">Tất cả</button>
+        <button class="tab-btn" data-filter="needs_reply" onclick="setFilter('needs_reply',this)">Cần rep</button>
+        <button class="tab-btn" data-filter="processing" onclick="setFilter('processing',this)">Đang xử lý</button>
+        <button class="tab-btn" data-filter="done" onclick="setFilter('done',this)">Hoàn tất</button>
+      </div>
+      <div id="monitorList"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const WS_PORT = 8765;
+let ws = null;
+let state = { monitors: {}, messages: {}, staff: [], user_info: {} };
+let currentFilter = 'all';
+let staffTabs = [];
+
+// ---- Clock ----
+setInterval(() => {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString('vi-VN');
+}, 1000);
+
+// ---- Default dates ----
+(function() {
+  const now = new Date();
+  const to = now.toISOString().split('T')[0];
+  const from = new Date(now - 30 * 86400000).toISOString().split('T')[0];
+  document.getElementById('dateTo').value = to;
+  document.getElementById('dateFrom').value = from;
+})();
+
+// ---- WebSocket ----
+function connect() {
+  ws = new WebSocket(`ws://${location.hostname}:${WS_PORT}`);
+
+  ws.onopen = () => {
+    document.getElementById('wsDot').classList.add('connected');
+    document.getElementById('wsStatus').textContent = 'Đã kết nối';
+  };
+
+  ws.onmessage = (e) => {
+    const { event, data } = JSON.parse(e.data);
+    if (event === 'update') {
+      state = data;
+      document.getElementById('lastUpdated').textContent = 'Cập nhật: ' + new Date().toLocaleTimeString('vi-VN');
+      rebuildStaffTabs();
+      renderMonitors();
+    } else if (event === 'orders') {
+      renderSearchResults(data);
+    } else if (event === 'error') {
+      alert('Lỗi: ' + data.message);
+    }
+  };
+
+  ws.onclose = () => {
+    document.getElementById('wsDot').classList.remove('connected');
+    document.getElementById('wsStatus').textContent = 'Mất kết nối';
+    setTimeout(connect, 3000);
+  };
+  ws.onerror = () => ws.close();
+}
+connect();
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function sendRefresh() { send({ action: 'refresh' }); }
+
+// ---- Helpers ----
+function esc(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const HH = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  const DD = String(d.getDate()).padStart(2,'0'), MM = String(d.getMonth()+1).padStart(2,'0');
+  return `${HH}:${mm} ${DD}/${MM}/${String(d.getFullYear()).slice(2)}`;
+}
+
+function fmtAmt(n) {
+  return (n || 0).toLocaleString('vi-VN') + '₫';
+}
+
+function priorityBadge(p) {
+  const map = { high: ['badge-high','🔴 Cao'], normal: ['badge-normal','🟡 Thường'], low: ['badge-low','🟢 Thấp'] };
+  const [cls, label] = map[p] || map.normal;
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function statusBadge(s) {
+  const map = { pending: ['badge-pending','Chưa xử lý'], processing: ['badge-proc','Đang xử lý'], done: ['badge-done','Hoàn tất'] };
+  const [cls, label] = map[s] || map.pending;
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+
+function unreadHtml(m) {
+  if (!m.needs_reply || m.unread_duration_mins == null) return '';
+  const mins = m.unread_duration_mins;
+  const txt = mins < 1 ? '< 1 phút' : `${Math.round(mins)} phút`;
+  const cls = mins > 60 ? 'unread-danger' : mins > 30 ? 'unread-warn' : 'unread-ok';
+  return `<span class="${cls}">⏱ Chưa rep: ${txt}</span>`;
+}
+
+function bubblesHtml(msgs, limit) {
+  if (!msgs || !msgs.length) return '<div class="no-msg">Chưa có tin nhắn</div>';
+  const items = limit ? msgs.slice(0, limit) : msgs;
+  return items.map(msg => {
+    const cls = msg.IsOwner ? 'bubble-shop' : 'bubble-customer';
+    const who = msg.IsOwner ? 'Shop' : 'Khách';
+    const t = fmtDate(msg.CreatedTime);
+    return `<div class="bubble-meta">${who} · ${t}</div><div class="bubble ${cls}">${esc((msg.Message||'').substring(0,120))}</div>`;
+  }).join('');
+}
+
+// ---- Staff filter tabs ----
+function rebuildStaffTabs() {
+  const newStaff = state.staff || [];
+  if (JSON.stringify(newStaff) === JSON.stringify(staffTabs)) return;
+  staffTabs = newStaff;
+
+  const tabs = document.getElementById('filterTabs');
+  // Remove old staff tabs
+  tabs.querySelectorAll('[data-filter^="staff:"]').forEach(el => el.remove());
+
+  newStaff.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn';
+    btn.dataset.filter = `staff:${name}`;
+    btn.textContent = name;
+    btn.onclick = () => setFilter(`staff:${name}`, btn);
+    tabs.appendChild(btn);
+  });
+
+  const info = state.user_info || {};
+  const company = (info.Company && info.Company.Name) ? info.Company.Name : 'Dashboard';
+  document.getElementById('shopName').textContent = company;
+}
+
+function setFilter(f, el) {
+  currentFilter = f;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  if (el) el.classList.add('active');
+  renderMonitors();
+}
+
+// ---- Render monitors ----
+function renderMonitors() {
+  const monitors = state.monitors || {};
+  const messages = state.messages || {};
+
+  let entries = Object.values(monitors);
+
+  // Apply filter
+  if (currentFilter === 'needs_reply') {
+    entries = entries.filter(m => m.needs_reply && m.status !== 'done');
+  } else if (currentFilter === 'processing') {
+    entries = entries.filter(m => m.status === 'processing');
+  } else if (currentFilter === 'done') {
+    entries = entries.filter(m => m.status === 'done');
+  } else if (currentFilter.startsWith('staff:')) {
+    const name = currentFilter.slice(6);
+    entries = entries.filter(m => m.assigned_to === name);
+  }
+
+  // Sort: needs_reply DESC, unread DESC
+  entries.sort((a, b) => {
+    if (b.needs_reply !== a.needs_reply) return b.needs_reply ? 1 : -1;
+    return (b.unread_duration_mins || 0) - (a.unread_duration_mins || 0);
+  });
+
+  document.getElementById('totalCount').textContent = `(${entries.length})`;
+
+  const list = document.getElementById('monitorList');
+  if (!entries.length) {
+    list.innerHTML = '<div class="empty-state">Không có đơn nào</div>';
+    return;
+  }
+
+  list.innerHTML = entries.map(m => cardHtml(m, messages[m.facebook_id] || [])).join('');
+}
+
+function cardHtml(m, msgs) {
+  const cardCls = !m.needs_reply ? '' : (m.unread_duration_mins || 0) > 60 ? 'card-red' : 'card-yellow';
+  const statusOpts = [
+    {v:'pending',l:'Chưa xử lý'},
+    {v:'processing',l:'Đang xử lý'},
+    {v:'done',l:'Hoàn tất'},
+  ].map(o => `<button class="btn btn-sm btn-default ${m.status===o.v?'active':''}" onclick="updateField('${m.facebook_id}','status','${o.v}')">${o.l}</button>`).join('');
+
+  const prioOpts = [
+    {v:'high',l:'🔴 Cao'},
+    {v:'normal',l:'🟡 Thường'},
+    {v:'low',l:'🟢 Thấp'},
+  ].map(o => `<button class="btn btn-sm btn-default ${m.priority===o.v?'active':''}" onclick="updateField('${m.facebook_id}','priority','${o.v}')">${o.l}</button>`).join('');
+
+  const staffOpts = ['', ...(state.staff || [])].map(s =>
+    `<option value="${esc(s)}" ${m.assigned_to===s?'selected':''}>${s||'—'}</option>`
+  ).join('');
+
+  const fid = m.facebook_id;
+
+  return `
+  <div class="monitor-card ${cardCls}" id="card-${fid}">
+    <div class="card-top">
+      <div class="card-title">
+        <span class="card-ref">#${esc(m.reference)}</span>
+        <span class="card-name">${esc(m.partner_name)}</span>
+        <span class="card-date">${fmtDate(m.date_invoice)} · ${esc(m.phone||'')}</span>
+        <div class="card-badges">
+          ${priorityBadge(m.priority)}
+          ${statusBadge(m.status)}
+          ${m.assigned_to ? `<span class="badge badge-pending">${esc(m.assigned_to)}</span>` : ''}
+        </div>
+      </div>
+      <div>${unreadHtml(m)}</div>
+    </div>
+
+    <div class="card-msgs">
+      <div class="msg-list">${bubblesHtml(msgs, 3)}</div>
+      ${msgs.length > 3 ? `
+        <button class="collapse-btn" onclick="toggleThread('${fid}',this)">▼ Xem tất cả tin nhắn (${msgs.length})</button>
+        <div class="full-thread" id="thread-${fid}">
+          <div class="msg-list">${bubblesHtml(msgs)}</div>
+        </div>
+      ` : ''}
+    </div>
+
+    <div class="card-controls">
+      <div class="control-row">
+        <span class="control-label">Phụ trách</span>
+        <select class="ctrl-select" onchange="updateField('${fid}','assigned_to',this.value)">${staffOpts}</select>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Trạng thái</span>
+        <div class="btn-group">${statusOpts}</div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Ưu tiên</span>
+        <div class="btn-group">${prioOpts}</div>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Ghi chú</span>
+        <input class="note-input" type="text" value="${esc(m.note||'')}" placeholder="Thêm ghi chú..."
+               oninput="scheduleNoteSave('${fid}',this)">
+        <span class="save-indicator" id="saved-${fid}">✓ Đã lưu</span>
+      </div>
+      <div class="control-row" style="justify-content:flex-end">
+        <button class="btn btn-danger btn-sm" onclick="doRemove('${fid}')">Xoá khỏi ds</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function toggleThread(fid, btn) {
+  const thread = document.getElementById(`thread-${fid}`);
+  if (thread.classList.contains('open')) {
+    thread.classList.remove('open');
+    btn.textContent = btn.textContent.replace('▲','▼');
+  } else {
+    thread.classList.add('open');
+    btn.textContent = btn.textContent.replace('▼','▲');
+  }
+}
+
+// ---- Actions ----
+function updateField(fid, field, value) {
+  send({ action: 'update_monitor', facebook_id: fid, patch: { [field]: value } });
+}
+
+const _noteTimers = {};
+function scheduleNoteSave(fid, input) {
+  clearTimeout(_noteTimers[fid]);
+  _noteTimers[fid] = setTimeout(() => {
+    send({ action: 'update_monitor', facebook_id: fid, patch: { note: input.value } });
+    const ind = document.getElementById(`saved-${fid}`);
+    if (ind) { ind.classList.add('show'); setTimeout(() => ind.classList.remove('show'), 2000); }
+  }, 800);
+}
+
+function doRemove(fid) {
+  if (!confirm('Xoá đơn này khỏi danh sách theo dõi?')) return;
+  send({ action: 'remove_monitor', facebook_id: fid });
+}
+
+// ---- Search ----
+function doSearch() {
+  const query = document.getElementById('searchQuery').value.trim();
+  const dateFrom = document.getElementById('dateFrom').value;
+  const dateTo = document.getElementById('dateTo').value;
+  send({ action: 'search_orders', query, date_from: dateFrom, date_to: dateTo });
+}
+
+function renderSearchResults(data) {
+  const wrap = document.getElementById('searchResults');
+  const tbody = document.getElementById('searchBody');
+  wrap.style.display = 'block';
+
+  const items = data.items || [];
+  const monitored = state.monitors || {};
+
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="result-empty">Không tìm thấy đơn nào</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(o => {
+    const fid = o.FacebookId;
+    const isMonitored = fid && o._monitored;
+    const noFb = !fid;
+    const name = (o.PartnerDisplayName || '').replace(/^\[KH\d+\]\s*/, '');
+    let btn = '';
+    if (noFb) {
+      btn = '<span style="color:#484f58;font-size:12px">Không có FB</span>';
+    } else if (isMonitored) {
+      btn = '<span class="monitored-badge">✓ Đang theo dõi</span>';
+    } else {
+      btn = `<button class="btn btn-primary btn-sm" onclick="addMonitor(${JSON.stringify(o).replace(/"/g,'&quot;')})">+ Theo dõi</button>`;
+    }
+    return `<tr>
+      <td style="font-family:monospace;color:#58a6ff">${esc(o.Reference||'')}</td>
+      <td>${esc(name)}</td>
+      <td style="color:#8b949e;font-size:12px">${fmtDate(o.DateInvoice)}</td>
+      <td style="color:#8b949e">${esc(o.Phone||'')}</td>
+      <td>${fmtAmt(o.CashOnDelivery||o.AmountTotal)}</td>
+      <td>${btn}</td>
+    </tr>`;
+  }).join('');
+}
+
+function addMonitor(order) {
+  send({
+    action: 'add_monitor',
+    facebook_id: order.FacebookId,
+    reference: order.Reference || '',
+    partner_name: (order.PartnerDisplayName || '').replace(/^\[KH\d+\]\s*/, ''),
+    phone: order.Phone || '',
+    date_invoice: order.DateInvoice || '',
+    amount_total: order.AmountTotal || 0,
+    order_state: order.State || '',
+  });
+}
+</script>
+</body>
+</html>

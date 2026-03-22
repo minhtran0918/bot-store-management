@@ -9,3 +9,4 @@ __pycache__/
 CLAUDE.md
 .claudeignore
 broadcast_order/config/gsheets_credentials.json
+broadcast_order/data/*.log
