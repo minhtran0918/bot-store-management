@@ -10,8 +10,9 @@ Handles various Vietnamese ecommerce note patterns:
 - Dotted/spaced phone numbers: "0918.677.633", "0947 729 097"
 - Time patterns excluded: "7h30" not treated as prices
 - Weight patterns excluded: "49kg" not treated as prices
-- A-code priority: A-code on same line as explicit price → A-code wins
+- A-code priority: A-code on same line as explicit price → A-code wins, explicit ignored
 - Two-price ambiguity: 2+ prices on one line (no A-code) → extract nothing
+- A-code space: "A 1" treated same as "A1" (optional space between letter and digit)
 """
 from __future__ import annotations
 
@@ -34,24 +35,24 @@ _PHONE_PATTERNS = [
     re.compile(r"(?<![.\d])0\d{2,3}[.\-]\d{3}[.\-]\d{3,4}"),  # dotted:   0918.677.633
     re.compile(r"(?<![.\d])0\d{2,3}\s+\d{3}\s+\d{3}"),        # spaced:   0947 729 097
     re.compile(r"\.\s*0\d{9,}"),                               # after-dot: 185.0328019689
+    re.compile(r"(?<=\d)(0\d{9,})(?!\d)"),                     # adjacent: 1850979404214 → 185
 ]
 
 
 def _build_code_pattern(code: str) -> str:
-    """Build regex for A-code allowing optional spaces and various suffixes.
+    """Build regex for A-code (optional space between chars allowed) and various suffixes.
 
     Examples for code "A1":
       - "A1 170"       → matches (followed by space)
-      - "A 1"          → matches (space between A and 1)
+      - "A 1"          → matches (optional space between A and digit is valid)
       - "A10972643331" → matches (followed by phone 0ddd...)
       - "A185"         → matches (followed by 2+ digit price)
       - "A117"         → matches (followed by 2+ digit price)
       - "A11", "A10"   → no match (followed by single digit, not valid)
       - "BA1"          → no match (preceded by word char)
     """
-    chars = [re.escape(c) for c in code]
-    code_pat = r"\s*".join(chars)
-    return rf"(?<!\w){code_pat}(?=\s|[^a-zA-Z0-9]|0\d{{8,}}|[1-9]\d{{1,3}}(?!\d)|$)"
+    flexible = r"\s?".join(re.escape(c) for c in code)
+    return rf"(?<!\w){flexible}(?=\s|[^a-zA-Z0-9]|0\d{{8,}}|[1-9]\d{{1,3}}(?!\d)|$)"
 
 
 def _find_a_code_price(line: str, mapping: dict[str, int | None] | None) -> int | None:
@@ -99,18 +100,20 @@ def extract_note_prices(
         if not line:
             continue
 
-        # Step 1: Check for A-code — A-code wins over any explicit prices
+        # Step 1: Check for A-code
         a_code_price = _find_a_code_price(line, price_code_mapping)
-        if a_code_price is not None:
-            tokens.append(a_code_price)
-            continue
 
         # Step 2: Remove phone numbers from the line
         clean_line = line
         for phone_re in _PHONE_PATTERNS:
             clean_line = phone_re.sub("", clean_line)
 
-        # Step 3: Find all price tokens on this line
+        if a_code_price is not None:
+            # A-code always wins — explicit price on same line is ignored
+            tokens.append(a_code_price)
+            continue
+
+        # Step 3: Find all price tokens on this line (no A-code)
         matches = list(_PRICE_TOKEN_RE.finditer(clean_line))
         if len(matches) == 1:
             raw_digits = matches[0].group(1)
