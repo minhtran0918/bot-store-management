@@ -31,7 +31,7 @@ class BotConfig:
 
     # Required message keys — must all be present in config.yaml messages section
     _REQUIRED_MESSAGES = [
-        "ask_address_templates", "deposit_template",
+        "ask_address_templates", "ask_address_no_product_templates", "deposit_template",
         "oos_line_format", "oos_templates", "comment_fallback_templates",
     ]
 
@@ -312,6 +312,11 @@ class BotConfig:
     def ask_address_templates(self) -> list[str]:
         """MESS 1: ask-for-address templates. Uses {name} placeholder."""
         return self._str_list("ask_address_templates")
+
+    @property
+    def ask_address_no_product_templates(self) -> list[str]:
+        """MESS 1 (case 2.3): ask-for-address templates when no products in order. Uses {name} placeholder."""
+        return self._str_list("ask_address_no_product_templates")
 
     @property
     def deposit_template(self) -> str:

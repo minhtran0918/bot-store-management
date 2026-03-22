@@ -57,6 +57,12 @@ messages:
     - "Dạ chị ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
     - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
 
+  # MESS 1 (case 2.3): ask for address when no products in order list. {name} = customer name.
+  ask_address_no_product_templates:
+    - "Dạ chị {name} !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
+    - "Dạ chị !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
+    - "Dạ chị {name} !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
+
   # MESS 2: deposit request. {name} = customer name.
   deposit_template: "Dạ chị {name} !\n1/ Đơn 4 bộ cọc 100, 8 bộ cọc 200,.. ( thêm +4 bộ cọc 100 )\n2/ Hủy đơn đặt lại có cọc 100 ạ! ( Đơn xã, không nhận hàng,...)\n----\nNGUYEN THI NGOC NHUNG\nACB\n19337611"
 

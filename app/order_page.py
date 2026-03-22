@@ -1286,6 +1286,12 @@ class OrderPage:
         name = partner_name or "bạn"
         return template.format(name=name)
 
+    def _build_ask_address_no_product_message(self, partner_name: str = "") -> str:
+        """MESS 1 (case 2.3): Ask for address when no products in order list."""
+        template = random.choice(self._cfg.ask_address_no_product_templates)
+        name = partner_name or "bạn"
+        return template.format(name=name)
+
     def _build_deposit_message(self, partner_name: str = "") -> str:
         """MESS 2: Ask for deposit (cases 1.1, 2.1)."""
         name = partner_name or "bạn"
@@ -1581,11 +1587,15 @@ class OrderPage:
                                 oos_msg = self._build_oos_message(oos_products, partner_name)
                                 self._send_in_panel(oos_msg, None, order_code)
 
-                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.3)
+                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            # TAG 2.3: no products → use dedicated no-product template
                             # For TAG 2.2: only ask if there are in-stock products
                             # For TAG 2.4: only ask if there are in-stock products
                             if self._cfg.enable_send_message:
-                                if resolved_tag in (TAG_2, TAG_2_1, TAG_2_3):
+                                if resolved_tag == TAG_2_3:
+                                    ask_msg = self._build_ask_address_no_product_message(partner_name)
+                                    self._send_in_panel(ask_msg, None, order_code)
+                                elif resolved_tag in (TAG_2, TAG_2_1):
                                     ask_msg = self._build_ask_address_message(partner_name)
                                     self._send_in_panel(ask_msg, None, order_code)
                                 elif resolved_tag in (TAG_2_2, TAG_2_4) and in_stock_count > 0:
@@ -1872,11 +1882,15 @@ class OrderPage:
                                 oos_msg = self._build_oos_message(oos_products, partner_name)
                                 self._send_in_panel(oos_msg, None, order_code)
 
-                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.3)
+                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            # TAG 2.3: no products → use dedicated no-product template
                             # For TAG 2.2: only ask if there are in-stock products
                             # For TAG 2.4: only ask if there are in-stock products
                             if self._cfg.enable_send_message:
-                                if resolved_tag in (TAG_2, TAG_2_1, TAG_2_3):
+                                if resolved_tag == TAG_2_3:
+                                    ask_msg = self._build_ask_address_no_product_message(partner_name)
+                                    self._send_in_panel(ask_msg, None, order_code)
+                                elif resolved_tag in (TAG_2, TAG_2_1):
                                     ask_msg = self._build_ask_address_message(partner_name)
                                     self._send_in_panel(ask_msg, None, order_code)
                                 elif resolved_tag in (TAG_2_2, TAG_2_4) and in_stock_count > 0:
