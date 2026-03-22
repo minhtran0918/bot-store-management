@@ -1,12 +1,12 @@
 """
 Broadcast Order — Live Feed Server
 
-Khởi động bằng: chọn "broadcast_order" trong menu chính (main.py)
+Start via: select "broadcast_order" in the main menu (main.py)
 
-Làm 3 việc:
-  1. Fetch API định kỳ (chu kỳ cấu hình trong config.yaml → broadcast_order.fetch_interval)
-  2. Serve file HTML tĩnh (display.html, control.html) qua HTTP
-  3. WebSocket server để push data xuống browser theo thời gian thực và nhận tag từ control panel
+Does 3 things:
+  1. Periodically fetches API data (interval configured in config.yaml → broadcast_order.fetch_interval)
+  2. Serves static HTML files (display.html, control.html) over HTTP
+  3. WebSocket server to push live data to browsers and receive tag actions from control panel
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import json
 import threading
 import urllib.error
 import urllib.request
+import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -24,17 +25,20 @@ from typing import Callable
 try:
     import websockets
 except ImportError:
-    raise ImportError("Thiếu thư viện websockets. Chạy: pip install websockets")
+    raise ImportError("Missing dependency: websockets. Run: pip install websockets")
+
+from app.gsheets import make_gsheet_writer
 
 
-# ─── HTTP server tĩnh ────────────────────────────────────────────────────────
+# ─── Static HTTP server ───────────────────────────────────────────────────────
 
 _SERVE_DIR: Path | None = None
+_WS_PORT: int = 8765
 
 
 class _StaticHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        pass  # tắt access log
+        pass  # suppress access log
 
     def do_GET(self):
         name = self.path.lstrip("/") or "display.html"
@@ -43,9 +47,9 @@ class _StaticHandler(BaseHTTPRequestHandler):
             return
         path = _SERVE_DIR / name
         if not path.exists():
-            self.send_error(404, f"Không tìm thấy: {name}")
+            self.send_error(404, f"Not found: {name}")
             return
-        body = path.read_bytes()
+        body = path.read_text(encoding="utf-8").replace("%%WS_PORT%%", str(_WS_PORT)).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
@@ -54,56 +58,65 @@ class _StaticHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def _start_http_server(port: int, serve_dir: Path) -> None:
-    global _SERVE_DIR
+def _start_http_server(port: int, serve_dir: Path, ws_port: int) → None:
+    global _SERVE_DIR, _WS_PORT
     _SERVE_DIR = serve_dir
+    _WS_PORT = ws_port
     HTTPServer(("0.0.0.0", port), _StaticHandler).serve_forever()
 
 
 # ─── Broadcast Server ─────────────────────────────────────────────────────────
 
 class BroadcastServer:
-    """Quản lý WebSocket clients, fetch API định kỳ và lưu tag đơn hàng."""
+    """Manages WebSocket clients, periodic API fetching, and order tag persistence."""
 
     def __init__(self, config: dict, base_dir: Path, log_fn: Callable[[str], None]):
         bc: dict = config.get("broadcast_order") or {}
-        self._http_port: int = int(bc.get("http_port", 8080))
-        self._ws_port: int = int(bc.get("ws_port", 8765))
+        self._http_port: int = int(bc["http_port"])
+        self._ws_port: int = int(bc["ws_port"])
         self._fetch_interval: int = int(bc.get("fetch_interval", 60))
         self._api_url: str = str(bc.get("api_url") or "").strip()
         self._api_headers: dict = dict(bc.get("api_headers") or {})
 
-        tags_rel = bc.get("tags_file") or "data/broadcast_tags.json"
-        self._tags_file: Path = Path(tags_rel) if Path(tags_rel).is_absolute() else base_dir / tags_rel
+        self._tags_dir: Path = base_dir / "data" / "broadcast"
         self._token_file: Path = base_dir / str(
             (config.get("auth") or {}).get("token_file", "data/auth_token.json")
         )
 
         self._log = log_fn
         self._messages: dict | None = None
-        self._tags: dict[str, dict] = self._load_tags()
         self._clients: set = set()
+        self._tags: dict[str, dict] = self._load_tags()
+
+        gsheets_cfg: dict = bc.get("gsheets") or {}
+        self._gsheets = make_gsheet_writer(gsheets_cfg, base_dir, log_fn)
 
     # ── Tag persistence ──────────────────────────────────────────────────────
 
-    def _load_tags(self) -> dict:
-        if self._tags_file.exists():
+    @property
+    def _tags_file(self) → Path:
+        return self._tags_dir / "tags.json"
+
+    def _load_tags(self) → dict:
+        path = self._tags_file
+        if path.exists():
             try:
-                return json.loads(self._tags_file.read_text(encoding="utf-8"))
+                return json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 return {}
         return {}
 
-    def _save_tags(self) -> None:
-        self._tags_file.parent.mkdir(parents=True, exist_ok=True)
-        self._tags_file.write_text(
+    def _save_tags(self) → None:
+        path = self._tags_file
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
             json.dumps(self._tags, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
     # ── Auth token ───────────────────────────────────────────────────────────
 
-    def _load_bearer_token(self) -> str | None:
+    def _load_bearer_token(self) → str | None:
         if not self._token_file.exists():
             return None
         try:
@@ -112,11 +125,94 @@ class BroadcastServer:
         except Exception:
             return None
 
+    # ── Sample data (shown when api_url is not configured) ───────────────────
+
+    @staticmethod
+    def _sample_data() → dict:
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+
+        def ts(offset_minutes: int = 0) → str:
+            from datetime import timedelta
+            return (now - timedelta(minutes=offset_minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+        return {
+            "is_sample": True,
+            "Data": [
+                {
+                    "Id": "sample-001",
+                    "Type": "comment",
+                    "IsOwner": False,
+                    "Message": "1 bộ size M",
+                    "CreatedTime": ts(55),
+                    "Order": {"Count": 1, "Data": [{"Code": "ORD20240001"}]},
+                    "Attachments": [],
+                    "Object": {
+                        "Description": "Set áo váy hè 2024",
+                        "LiveCampaign": {"Name": "LIVE 21/3/2026"},
+                    },
+                },
+                {
+                    "Id": "sample-002",
+                    "Type": "message",
+                    "IsOwner": True,
+                    "ApplicationUser": {"Name": "Linh Đan"},
+                    "Message": "Dạ chị Hoa ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ !",
+                    "CreatedTime": ts(50),
+                    "Order": {"Count": 1, "Data": [{"Code": "ORD20240001"}]},
+                    "Attachments": [],
+                },
+                {
+                    "Id": "sample-003",
+                    "Type": "message",
+                    "IsOwner": False,
+                    "Message": "Shop ơi cho mình hỏi còn hàng không ạ?",
+                    "CreatedTime": ts(30),
+                    "Order": {"Count": 0, "Data": []},
+                    "Attachments": [],
+                },
+                {
+                    "Id": "sample-004",
+                    "Type": "comment",
+                    "IsOwner": False,
+                    "Message": "2 bộ **********",
+                    "CreatedTime": ts(20),
+                    "Order": {"Count": 1, "Data": [{"Code": "ORD20240002"}]},
+                    "Attachments": [],
+                    "Object": {
+                        "Description": "Đầm maxi boho",
+                        "LiveCampaign": {"Name": "LIVE 21/3/2026"},
+                    },
+                },
+                {
+                    "Id": "sample-005",
+                    "Type": "message",
+                    "IsOwner": False,
+                    "Message": "Chị địa chỉ: 123 Nguyễn Văn A, Quận 1, HCM",
+                    "CreatedTime": ts(10),
+                    "Order": {"Count": 2, "Data": [{"Code": "ORD20240001"}, {"Code": "ORD20240003"}]},
+                    "Attachments": [],
+                    "Error": False,
+                },
+                {
+                    "Id": "sample-006",
+                    "Type": "message",
+                    "IsOwner": True,
+                    "ApplicationUser": {"Name": "Linh Đan"},
+                    "Message": "Dạ chị Lan !\n1/ Đơn 4 bộ cọc 100, 8 bộ cọc 200,..\nNGUYEN THI NGOC NHUNG\nACB\n19337611",
+                    "CreatedTime": ts(5),
+                    "Order": {"Count": 1, "Data": [{"Code": "ORD20240003"}]},
+                    "Attachments": [],
+                },
+            ],
+        }
+
     # ── API fetch ────────────────────────────────────────────────────────────
 
-    def _fetch_api(self) -> dict | None:
+    def _fetch_api(self) → dict | None:
         if not self._api_url:
-            return None
+            self._log("[BROADCAST] api_url not configured — showing sample data")
+            return self._sample_data()
         headers = dict(self._api_headers)
         token = self._load_bearer_token()
         if token and "Authorization" not in headers:
@@ -126,23 +222,34 @@ class BroadcastServer:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 count = len(data.get("Data") or [])
-                self._log(f"[BROADCAST] Fetch OK — {count} mục")
+                self._log(f"[BROADCAST] Fetch OK — {count} item(s)")
                 return data
         except urllib.error.URLError as exc:
-            self._log(f"[BROADCAST] Fetch lỗi: {exc}")
+            self._log(f"[BROADCAST] Fetch error: {exc}")
         except Exception as exc:
-            self._log(f"[BROADCAST] Lỗi không xác định: {exc}")
+            self._log(f"[BROADCAST] Unexpected error: {exc}")
         return None
+
+    # ── Google Sheets sync ───────────────────────────────────────────────────
+
+    def _gsheets_sync(self) → None:
+        """Sync tagged items to Google Sheets (runs in executor to avoid blocking)."""
+        if self._gsheets is None:
+            return
+        try:
+            self._gsheets.sync(self._messages, self._tags)
+        except Exception as exc:
+            self._log(f"[GSHEETS] Sync error: {exc}")
 
     # ── Broadcast ────────────────────────────────────────────────────────────
 
-    def _make_payload(self) -> str:
+    def _make_payload(self) → str:
         return json.dumps(
             {"event": "update", "data": {"messages": self._messages, "tags": self._tags}},
             ensure_ascii=False,
         )
 
-    async def _broadcast(self, payload: str) -> None:
+    async def _broadcast(self, payload: str) → None:
         dead: set = set()
         for ws in list(self._clients):
             try:
@@ -153,12 +260,12 @@ class BroadcastServer:
 
     # ── WebSocket handler ────────────────────────────────────────────────────
 
-    async def _handle_client(self, ws) -> None:
+    async def _handle_client(self, ws) → None:
         self._clients.add(ws)
         addr = ws.remote_address
-        self._log(f"[BROADCAST] Kết nối mới: {addr}  (tổng: {len(self._clients)})")
+        self._log(f"[BROADCAST] Client connected: {addr}  (total: {len(self._clients)})")
         try:
-            # gửi state hiện tại ngay khi client vừa kết nối
+            # send current state immediately on connect
             await ws.send(self._make_payload())
 
             async for raw in ws:
@@ -181,25 +288,29 @@ class BroadcastServer:
                         "tagged_at": datetime.now().isoformat(),
                     }
                     self._save_tags()
-                    self._log(f"[BROADCAST] Tag [{status}] ← {item_id}")
+                    self._log(f"[BROADCAST] Tag [{status}] <- {item_id}")
                     await self._broadcast(self._make_payload())
+                    loop = asyncio.get_event_loop()
+                    loop.run_in_executor(None, self._gsheets_sync)
 
                 elif action == "untag":
                     removed = self._tags.pop(item_id, None)
                     if removed is not None:
                         self._save_tags()
-                        self._log(f"[BROADCAST] Untag ← {item_id}")
+                        self._log(f"[BROADCAST] Untag <- {item_id}")
                         await self._broadcast(self._make_payload())
+                        loop = asyncio.get_event_loop()
+                        loop.run_in_executor(None, self._gsheets_sync)
 
         except Exception:
             pass
         finally:
             self._clients.discard(ws)
-            self._log(f"[BROADCAST] Ngắt kết nối: {addr}  (còn: {len(self._clients)})")
+            self._log(f"[BROADCAST] Client disconnected: {addr}  (remaining: {len(self._clients)})")
 
     # ── Fetch loop ───────────────────────────────────────────────────────────
 
-    async def _fetch_loop(self) -> None:
+    async def _fetch_loop(self) → None:
         while True:
             loop = asyncio.get_event_loop()
             data = await loop.run_in_executor(None, self._fetch_api)
@@ -210,41 +321,49 @@ class BroadcastServer:
 
     # ── Entry point ──────────────────────────────────────────────────────────
 
-    async def run(self) -> None:
+    async def run(self) → None:
         serve_dir = Path(__file__).resolve().parent
 
-        # HTTP server chạy trên thread riêng (không block event loop)
+        # HTTP server runs on a separate thread (doesn't block the event loop)
         threading.Thread(
             target=_start_http_server,
-            args=(self._http_port, serve_dir),
+            args=(self._http_port, serve_dir, self._ws_port),
             daemon=True,
         ).start()
 
         self._log(f"[BROADCAST] Display  → http://localhost:{self._http_port}/display.html")
         self._log(f"[BROADCAST] Control  → http://localhost:{self._http_port}/control.html")
 
-        # fetch lần đầu ngay lập tức trước khi vào loop
+        # Open both tabs in the default browser after a short delay
+        # (give HTTP server thread time to bind the port)
+        def _open_browser() → None:
+            import time
+            time.sleep(0.8)
+            webbrowser.open(f"http://localhost:{self._http_port}/display.html")
+            webbrowser.open(f"http://localhost:{self._http_port}/control.html")
+
+        threading.Thread(target=_open_browser, daemon=True).start()
+
+        # Initial fetch before entering the loop
         loop = asyncio.get_event_loop()
         data = await loop.run_in_executor(None, self._fetch_api)
         if data is not None:
             self._messages = {**data, "fetched_at": datetime.now().isoformat()}
-        elif not self._api_url:
-            self._log("[BROADCAST] api_url chưa cấu hình — chỉ phục vụ tag từ control panel")
 
         asyncio.create_task(self._fetch_loop())
 
         async with websockets.serve(self._handle_client, "0.0.0.0", self._ws_port):
             self._log(f"[BROADCAST] WebSocket → ws://localhost:{self._ws_port}")
-            self._log("[BROADCAST] Nhấn Ctrl+C để dừng server")
-            await asyncio.Future()  # giữ server chạy mãi
+            self._log("[BROADCAST] Press Ctrl+C to stop the server")
+            await asyncio.Future()  # run forever
 
 
 # ─── Public entry point ───────────────────────────────────────────────────────
 
-def run_broadcast_server(config: dict, base_dir: Path, log_fn: Callable[[str], None]) -> None:
-    """Khởi động broadcast server. Blocking — chạy đến khi Ctrl+C."""
+def run_broadcast_server(config: dict, base_dir: Path, log_fn: Callable[[str], None]) → None:
+    """Start the broadcast server. Blocking — runs until Ctrl+C."""
     server = BroadcastServer(config, base_dir, log_fn)
     try:
         asyncio.run(server.run())
     except KeyboardInterrupt:
-        log_fn("[BROADCAST] Server đã dừng.")
+        log_fn("[BROADCAST] Server stopped.")

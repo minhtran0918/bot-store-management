@@ -8,3 +8,4 @@ __pycache__/
 /.tmp/
 CLAUDE.md
 .claudeignore
+app/gsheets_credentials.json

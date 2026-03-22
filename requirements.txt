@@ -3,3 +3,5 @@ PyYAML
 Pillow
 InquirerPy
 websockets
+gspread
+google-auth

@@ -55,8 +55,8 @@ python main.py
 Campaign filter selection is interactive when starting `main.py`:
 
 - First, choose run feature:
-  - `collect_order` (default): filter and collect rows to CSV across pagination, auto-add `NEW` tag for empty-tag rows, then run per-order check (`check_tag_new -> address_ok/no_address -> match_product/no_match_product`) before saving CSV.
-  - `confirm_order`: requires selecting an existing collected CSV, then runs login -> dashboard -> order -> filter -> iterate CSV order codes with per-order pagination lookup before edit-action placeholders.
+  - `collect_order` (default): filter and collect rows to CSV across pagination, auto-add `NEW` tag for empty-tag rows, then run per-order check (`check_tag_new → address_ok/no_address → match_product/no_match_product`) before saving CSV.
+  - `confirm_order`: requires selecting an existing collected CSV, then runs login → dashboard → order → filter → iterate CSV order codes with per-order pagination lookup before edit-action placeholders.
 - Press `1` for `yesterday` (default)
 - Press `2` for `today`
 - Press `3` to input a custom date (`d/m`, `d/m/yyyy`, or `yyyy-mm-dd`)

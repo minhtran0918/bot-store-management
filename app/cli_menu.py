@@ -108,6 +108,7 @@ def select(message: str, choices: list[dict], step: int, total: int, default: st
         pointer=">",
         show_cursor=False,
         mandatory=True,
+        cycle=False,
     ).execute()
     # After selection, InquirerPy collapses to ~1 line, but we need to clear header + that
     global _last_lines

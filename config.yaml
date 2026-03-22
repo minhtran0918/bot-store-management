@@ -110,8 +110,6 @@ keywords:
     - "3 Không Cho Đặt"
 
 credentials:
-  #username: "0915500082"
-  #password: "An12345678"
   username: "test"
   password: "Test@12345"
 
@@ -136,3 +134,9 @@ broadcast_order:
   api_url: ""              # API endpoint for messages/orders (leave empty if not configured yet)
   api_headers: {}          # Extra headers sent with each request. E.g. {"X-App": "tpos"}
   # Tag states are saved to data/broadcast/tags.json (persists across restarts).
+
+  gsheets:
+    enabled: true                               # Enable/disable Google Sheets sync
+    credentials_file: "app/gsheets_credentials.json"  # Service Account JSON key file
+    spreadsheet_id: "1pMEWw-661XgZB5mF7-8APf6BvQeqMnqBZ-_3g3bMOVI"  # Google Spreadsheet ID (from URL)
+    sheet_name: "Broadcast"                      # Target worksheet name
