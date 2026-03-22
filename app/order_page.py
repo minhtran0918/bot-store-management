@@ -1170,30 +1170,37 @@ class OrderPage:
                 _log("  [!] No user comments found")
                 return False
 
-            # Find reply button: prioritize comment that is all '*' chars, else first enabled
+            # Find reply button: prioritize comment with 5+ '*' anywhere in page,
+            # else fall back to first enabled comment in best_item scope.
+            # Star comment may live in a sibling div[id^='item_'] outside best_item.
             reply_btn = None
             first_btn = None
-            for ci in range(user_comments.count()):
-                comment = user_comments.nth(ci)
+
+            # PASS 1: search full page for a star comment
+            full_page_comments = self.page.locator(_COMMENT_SEL)
+            for ci in range(full_page_comments.count()):
+                comment = full_page_comments.nth(ci)
                 btn = comment.locator("button:has-text('Phản hồi')").first
-                if btn.count() == 0:
+                if btn.count() == 0 or btn.is_disabled():
                     continue
-                if btn.is_disabled():
-                    continue
-                # Remember the first usable button as fallback
-                if first_btn is None:
-                    first_btn = btn
-                # Check if comment contains 5+ consecutive '*' (e.g. "92k **********")
                 try:
                     comment_text = comment.inner_text(timeout=self._cfg.inner_text_read_ms).strip()
-                    body = comment_text.split("\n")[0].strip()
-                    if body and re.search(r"\*{5,}", body):
+                    if re.search(r"\*{5,}", comment_text):
                         reply_btn = btn
-                        _log(f"  COMMENT: found star comment at index {ci}: '{body[:40]}'")
+                        _log(f"  COMMENT: found star comment at index {ci}: '{comment_text[:60]}'")
                         break
                 except Exception:
                     pass
+
+            # PASS 2: no star found — pick first enabled comment in scoped range
             if reply_btn is None:
+                for ci in range(user_comments.count()):
+                    comment = user_comments.nth(ci)
+                    btn = comment.locator("button:has-text('Phản hồi')").first
+                    if btn.count() == 0 or btn.is_disabled():
+                        continue
+                    first_btn = btn
+                    break
                 reply_btn = first_btn
 
             if reply_btn is None:
