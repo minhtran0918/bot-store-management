@@ -47,7 +47,7 @@ RECHECK_TAGS = {TAG_1_2, TAG_2_2}
 
 # Tags that indicate "tag only, no action" — orders with these tags are skipped for messaging
 # NOTE: TAG_1_4 and TAG_2_4 are NOT included here because they now send OOS notification + images
-# NOTE: TAG_2_3 is NOT included here because it still needs MESS 1 (ask address)
+# NOTE: TAG_2_3 is NOT included here because it still needs ask address
 TAG_ONLY_TAGS = {TAG_1_3}
 
 # Tags that indicate out-of-stock — need OOS notification message

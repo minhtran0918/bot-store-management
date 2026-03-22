@@ -134,12 +134,12 @@ class BotConfig:
 
     @property
     def enable_comment_reply(self) -> bool:
-        """MESS 3: reply to the customer's FB comment. Disable when the feature is buggy."""
+        """reply comment: reply to the customer's FB comment. Disable when the feature is buggy."""
         return bool(self._features.get("enable_comment_reply", False))
 
     @property
     def enable_send_message(self) -> bool:
-        """MESS 1/2: send inbox text messages (ask address, deposit)."""
+        """ask address/deposit: send inbox text messages (ask address, deposit)."""
         return bool(self._features.get("enable_send_message", True))
 
     @property
@@ -310,17 +310,17 @@ class BotConfig:
 
     @property
     def ask_address_templates(self) -> list[str]:
-        """MESS 1: ask-for-address templates. Uses {name} placeholder."""
+        """ask address templates. Uses {name} placeholder."""
         return self._str_list("ask_address_templates")
 
     @property
     def ask_address_no_product_templates(self) -> list[str]:
-        """MESS 1 (case 2.3): ask-for-address templates when no products in order. Uses {name} placeholder."""
+        """ask address (case 2.3): ask-for-address templates when no products in order. Uses {name} placeholder."""
         return self._str_list("ask_address_no_product_templates")
 
     @property
     def deposit_template(self) -> str:
-        """MESS 2: deposit request template. Uses {name} placeholder."""
+        """ask deposit template. Uses {name} placeholder."""
         return self._str_val("deposit_template")
 
     @property
@@ -335,5 +335,5 @@ class BotConfig:
 
     @property
     def comment_fallback_templates(self) -> list[str]:
-        """MESS 3: FB comment reply templates. Uses {name} placeholder."""
+        """reply comment templates. Uses {name} placeholder."""
         return self._str_list("comment_fallback_templates")

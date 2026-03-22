@@ -1281,19 +1281,19 @@ class OrderPage:
         return False
 
     def _build_ask_address_message(self, partner_name: str = "") -> str:
-        """MESS 1: Ask for address (no-address cases)."""
+        """ask address: Ask for address (no-address cases)."""
         template = random.choice(self._cfg.ask_address_templates)
         name = partner_name or "bạn"
         return template.format(name=name)
 
     def _build_ask_address_no_product_message(self, partner_name: str = "") -> str:
-        """MESS 1 (case 2.3): Ask for address when no products in order list."""
+        """ask address (case 2.3): Ask for address when no products in order list."""
         template = random.choice(self._cfg.ask_address_no_product_templates)
         name = partner_name or "bạn"
         return template.format(name=name)
 
     def _build_deposit_message(self, partner_name: str = "") -> str:
-        """MESS 2: Ask for deposit (cases 1.1, 2.1)."""
+        """ask deposit: Ask for deposit (cases 1.1, 2.1)."""
         name = partner_name or "bạn"
         return self._cfg.deposit_template.format(name=name)
 
@@ -1587,7 +1587,7 @@ class OrderPage:
                                 oos_msg = self._build_oos_message(oos_products, partner_name)
                                 self._send_in_panel(oos_msg, None, order_code)
 
-                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            # ask address (no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
                             # TAG 2.3: no products → use dedicated no-product template
                             # For TAG 2.2: only ask if there are in-stock products
                             # For TAG 2.4: only ask if there are in-stock products
@@ -1602,9 +1602,9 @@ class OrderPage:
                                     ask_msg = self._build_ask_address_message(partner_name)
                                     self._send_in_panel(ask_msg, None, order_code)
                                 elif resolved_tag in (TAG_2_2, TAG_2_4):
-                                    _log(f"  SKIP MESS 1: all products OOS, no point asking address")
+                                    _log(f"  SKIP ask address: all products OOS, no point asking address")
 
-                            # MESS 2: deposit message (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
+                            # ask deposit (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
                             if self._cfg.enable_send_message:
                                 if resolved_tag in (TAG_1_1, TAG_2_1):
                                     deposit_msg = self._build_deposit_message(partner_name)
@@ -1613,7 +1613,7 @@ class OrderPage:
                                     deposit_msg = self._build_deposit_message(partner_name)
                                     self._send_in_panel(deposit_msg, None, order_code)
 
-                            # MESS 3: reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
+                            # reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
                             if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
                                 comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"
@@ -1882,7 +1882,7 @@ class OrderPage:
                                 oos_msg = self._build_oos_message(oos_products, partner_name)
                                 self._send_in_panel(oos_msg, None, order_code)
 
-                            # MESS 1: ask address (no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
+                            # ask address (no-address tags: TAG 2, 2.1, 2.2, 2.3, 2.4)
                             # TAG 2.3: no products → use dedicated no-product template
                             # For TAG 2.2: only ask if there are in-stock products
                             # For TAG 2.4: only ask if there are in-stock products
@@ -1897,9 +1897,9 @@ class OrderPage:
                                     ask_msg = self._build_ask_address_message(partner_name)
                                     self._send_in_panel(ask_msg, None, order_code)
                                 elif resolved_tag in (TAG_2_2, TAG_2_4):
-                                    _log(f"  SKIP MESS 1: all products OOS, no point asking address")
+                                    _log(f"  SKIP ask address: all products OOS, no point asking address")
 
-                            # MESS 2: deposit message (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
+                            # ask deposit (TAG 1.1, 2.1, and 1.4/2.4 with 4+ in-stock)
                             if self._cfg.enable_send_message:
                                 if resolved_tag in (TAG_1_1, TAG_2_1):
                                     deposit_msg = self._build_deposit_message(partner_name)
@@ -1908,7 +1908,7 @@ class OrderPage:
                                     deposit_msg = self._build_deposit_message(partner_name)
                                     self._send_in_panel(deposit_msg, None, order_code)
 
-                            # MESS 3: reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
+                            # reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
                             if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
                                 comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"

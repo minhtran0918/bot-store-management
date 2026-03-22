@@ -13,8 +13,8 @@ bot:
 
 # ─── Feature flags ───────────────────────────────────────────────────────────
 features:
-  enable_comment_reply: true    # MESS 3: reply to FB comment. Disable when buggy.
-  enable_send_message: true     # MESS 1/2: send inbox text messages (ask address, deposit).
+  enable_comment_reply: true    # reply comment: reply to FB comment. Disable when buggy.
+  enable_send_message: true     # ask address/deposit: send inbox text messages (ask address, deposit).
   enable_send_product_image: true  # Send product images to customer.
   enable_send_bill_image: true  # Send sales bill image (phiếu mua hàng) for TAG 1.
   enable_send_oos_image: true   # Send in-stock product images for OOS orders (TAG 1.4/2.4).
@@ -51,19 +51,19 @@ timeouts:
 messages:
   ask_address: "Chị/anh cho shop xin địa chỉ nhận hàng giúp em nhé."
 
-  # MESS 1: ask for address (no-address orders). {name} = customer name.
+  # ask address: ask for address (no-address orders). {name} = customer name.
   ask_address_templates:
     - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
     - "Dạ chị ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
     - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
 
-  # MESS 1 (case 2.3): ask for address when no products in order list. {name} = customer name.
+  # ask address (case 2.3): ask for address when no products in order list. {name} = customer name.
   ask_address_no_product_templates:
     - "Dạ chị {name} !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
     - "Dạ chị !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
     - "Dạ chị {name} !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
 
-  # MESS 2: deposit request. {name} = customer name.
+  # ask deposit: deposit request. {name} = customer name.
   deposit_template: "Dạ chị {name} !\n1/ Đơn 4 bộ cọc 100, 8 bộ cọc 200,.. ( thêm +4 bộ cọc 100 )\n2/ Hủy đơn đặt lại có cọc 100 ạ! ( Đơn xã, không nhận hàng,...)\n----\nNGUYEN THI NGOC NHUNG\nACB\n19337611"
 
   # OOS line format per product. Placeholders: {price}, {name}, {forecast}.
@@ -73,7 +73,7 @@ messages:
   oos_templates:
     - "Dạ chị ơi những mẫu hết tồn:\n{oos_lines}\nChị lấy màu khác không chị hay shop bỏ bộ đó ra, shop đi đơn luôn cho chị {name}."
 
-  # MESS 3: FB comment reply templates. {name} = customer name.
+  # reply comment: FB comment reply templates. {name} = customer name.
   comment_fallback_templates:
     - "Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị không được ạ."
     - "Dạ chị {name} rep lại shop với ạ ! Shop gửi tin nhắn cho chị chưa thấy phản hồi ạ."
