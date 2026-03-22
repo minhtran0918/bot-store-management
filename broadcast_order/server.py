@@ -4,7 +4,7 @@ Broadcast Order — Live Feed Server
 Start via: select "broadcast_order" in the main menu (main.py)
 
 Does 3 things:
-  1. Periodically fetches API data (interval configured in config.yaml → broadcast_order.fetch_interval)
+  1. Periodically fetches API data (interval configured in broadcast_order/config/config.yaml)
   2. Serves static HTML files (display.html, control.html) over HTTP
   3. WebSocket server to push live data to browsers and receive tag actions from control panel
 """
@@ -27,7 +27,21 @@ try:
 except ImportError:
     raise ImportError("Missing dependency: websockets. Run: pip install websockets")
 
-from app.gsheets import make_gsheet_writer
+try:
+    import yaml
+except ImportError:
+    raise ImportError("Missing dependency: PyYAML. Run: pip install pyyaml")
+
+from broadcast_order.gsheets import make_gsheet_writer
+
+# Directory containing this file (broadcast_order/)
+_MODULE_DIR = Path(__file__).resolve().parent
+_CONFIG_FILE = _MODULE_DIR / "config" / "config.yaml"
+
+
+def _load_broadcast_config() -> dict:
+    with open(_CONFIG_FILE, encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 
 # ─── Static HTTP server ───────────────────────────────────────────────────────
@@ -58,7 +72,7 @@ class _StaticHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def _start_http_server(port: int, serve_dir: Path, ws_port: int) → None:
+def _start_http_server(port: int, serve_dir: Path, ws_port: int) -> None:
     global _SERVE_DIR, _WS_PORT
     _SERVE_DIR = serve_dir
     _WS_PORT = ws_port
@@ -70,8 +84,8 @@ def _start_http_server(port: int, serve_dir: Path, ws_port: int) → None:
 class BroadcastServer:
     """Manages WebSocket clients, periodic API fetching, and order tag persistence."""
 
-    def __init__(self, config: dict, base_dir: Path, log_fn: Callable[[str], None]):
-        bc: dict = config.get("broadcast_order") or {}
+    def __init__(self, base_dir: Path, log_fn: Callable[[str], None]):
+        bc = _load_broadcast_config()
         self._http_port: int = int(bc["http_port"])
         self._ws_port: int = int(bc["ws_port"])
         self._fetch_interval: int = int(bc.get("fetch_interval", 60))
@@ -79,9 +93,7 @@ class BroadcastServer:
         self._api_headers: dict = dict(bc.get("api_headers") or {})
 
         self._tags_dir: Path = base_dir / "data" / "broadcast"
-        self._token_file: Path = base_dir / str(
-            (config.get("auth") or {}).get("token_file", "data/auth_token.json")
-        )
+        self._token_file: Path = base_dir / "data" / "auth_token.json"
 
         self._log = log_fn
         self._messages: dict | None = None
@@ -94,10 +106,10 @@ class BroadcastServer:
     # ── Tag persistence ──────────────────────────────────────────────────────
 
     @property
-    def _tags_file(self) → Path:
+    def _tags_file(self) -> Path:
         return self._tags_dir / "tags.json"
 
-    def _load_tags(self) → dict:
+    def _load_tags(self) -> dict:
         path = self._tags_file
         if path.exists():
             try:
@@ -106,7 +118,7 @@ class BroadcastServer:
                 return {}
         return {}
 
-    def _save_tags(self) → None:
+    def _save_tags(self) -> None:
         path = self._tags_file
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
@@ -116,7 +128,7 @@ class BroadcastServer:
 
     # ── Auth token ───────────────────────────────────────────────────────────
 
-    def _load_bearer_token(self) → str | None:
+    def _load_bearer_token(self) -> str | None:
         if not self._token_file.exists():
             return None
         try:
@@ -128,11 +140,11 @@ class BroadcastServer:
     # ── Sample data (shown when api_url is not configured) ───────────────────
 
     @staticmethod
-    def _sample_data() → dict:
+    def _sample_data() -> dict:
         from datetime import timezone
         now = datetime.now(timezone.utc)
 
-        def ts(offset_minutes: int = 0) → str:
+        def ts(offset_minutes: int = 0) -> str:
             from datetime import timedelta
             return (now - timedelta(minutes=offset_minutes)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -209,7 +221,7 @@ class BroadcastServer:
 
     # ── API fetch ────────────────────────────────────────────────────────────
 
-    def _fetch_api(self) → dict | None:
+    def _fetch_api(self) -> dict | None:
         if not self._api_url:
             self._log("[BROADCAST] api_url not configured — showing sample data")
             return self._sample_data()
@@ -232,7 +244,7 @@ class BroadcastServer:
 
     # ── Google Sheets sync ───────────────────────────────────────────────────
 
-    def _gsheets_sync(self) → None:
+    def _gsheets_sync(self) -> None:
         """Sync tagged items to Google Sheets (runs in executor to avoid blocking)."""
         if self._gsheets is None:
             return
@@ -243,13 +255,13 @@ class BroadcastServer:
 
     # ── Broadcast ────────────────────────────────────────────────────────────
 
-    def _make_payload(self) → str:
+    def _make_payload(self) -> str:
         return json.dumps(
             {"event": "update", "data": {"messages": self._messages, "tags": self._tags}},
             ensure_ascii=False,
         )
 
-    async def _broadcast(self, payload: str) → None:
+    async def _broadcast(self, payload: str) -> None:
         dead: set = set()
         for ws in list(self._clients):
             try:
@@ -260,7 +272,7 @@ class BroadcastServer:
 
     # ── WebSocket handler ────────────────────────────────────────────────────
 
-    async def _handle_client(self, ws) → None:
+    async def _handle_client(self, ws) -> None:
         self._clients.add(ws)
         addr = ws.remote_address
         self._log(f"[BROADCAST] Client connected: {addr}  (total: {len(self._clients)})")
@@ -310,7 +322,7 @@ class BroadcastServer:
 
     # ── Fetch loop ───────────────────────────────────────────────────────────
 
-    async def _fetch_loop(self) → None:
+    async def _fetch_loop(self) -> None:
         while True:
             loop = asyncio.get_event_loop()
             data = await loop.run_in_executor(None, self._fetch_api)
@@ -321,8 +333,8 @@ class BroadcastServer:
 
     # ── Entry point ──────────────────────────────────────────────────────────
 
-    async def run(self) → None:
-        serve_dir = Path(__file__).resolve().parent
+    async def run(self) -> None:
+        serve_dir = _MODULE_DIR
 
         # HTTP server runs on a separate thread (doesn't block the event loop)
         threading.Thread(
@@ -331,12 +343,12 @@ class BroadcastServer:
             daemon=True,
         ).start()
 
-        self._log(f"[BROADCAST] Display  → http://localhost:{self._http_port}/display.html")
-        self._log(f"[BROADCAST] Control  → http://localhost:{self._http_port}/control.html")
+        self._log(f"[BROADCAST] Display  -> http://localhost:{self._http_port}/display.html")
+        self._log(f"[BROADCAST] Control  -> http://localhost:{self._http_port}/control.html")
 
         # Open both tabs in the default browser after a short delay
         # (give HTTP server thread time to bind the port)
-        def _open_browser() → None:
+        def _open_browser() -> None:
             import time
             time.sleep(0.8)
             webbrowser.open(f"http://localhost:{self._http_port}/display.html")
@@ -353,16 +365,16 @@ class BroadcastServer:
         asyncio.create_task(self._fetch_loop())
 
         async with websockets.serve(self._handle_client, "0.0.0.0", self._ws_port):
-            self._log(f"[BROADCAST] WebSocket → ws://localhost:{self._ws_port}")
+            self._log(f"[BROADCAST] WebSocket -> ws://localhost:{self._ws_port}")
             self._log("[BROADCAST] Press Ctrl+C to stop the server")
             await asyncio.Future()  # run forever
 
 
 # ─── Public entry point ───────────────────────────────────────────────────────
 
-def run_broadcast_server(config: dict, base_dir: Path, log_fn: Callable[[str], None]) → None:
+def run_broadcast_server(base_dir: Path, log_fn: Callable[[str], None]) -> None:
     """Start the broadcast server. Blocking — runs until Ctrl+C."""
-    server = BroadcastServer(config, base_dir, log_fn)
+    server = BroadcastServer(base_dir, log_fn)
     try:
         asyncio.run(server.run())
     except KeyboardInterrupt:

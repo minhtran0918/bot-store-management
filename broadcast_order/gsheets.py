@@ -1,13 +1,13 @@
-"""Google Sheets writer — dùng cho broadcast_order để sync tagged items.
+"""Google Sheets writer for broadcast_order — syncs tagged items to a worksheet.
 
-Yêu cầu:
+Requirements:
   pip install gspread google-auth
 
 Credentials:
-  Service Account JSON tại đường dẫn cấu hình trong config.yaml
+  Service Account JSON at the path configured in config.yaml
   (broadcast_order.gsheets.credentials_file)
 
-Cách dùng:
+Usage:
   writer = GSheetWriter(creds_file, spreadsheet_id, sheet_name, log_fn)
   writer.sync(messages_dict, tags_dict)
 """
@@ -40,12 +40,12 @@ _HEADERS = [
 
 
 class GSheetWriter:
-    """Ghi / cập nhật tagged items vào một worksheet Google Sheets.
+    """Writes / updates tagged items to a Google Sheets worksheet.
 
-    Mỗi lần ``sync()`` được gọi:
-      - Xóa toàn bộ nội dung cũ từ hàng 2 trở xuống.
-      - Ghi lại tất cả mục đang được tag theo thứ tự tagged_at.
-      - Hàng 1 luôn là header (không bị xóa).
+    Each ``sync()`` call:
+      - Clears all content from row 2 downward.
+      - Rewrites all currently tagged items sorted by tagged_at.
+      - Row 1 (header) is never cleared.
     """
 
     def __init__(
@@ -57,8 +57,8 @@ class GSheetWriter:
     ) -> None:
         if not _GSPREAD_OK:
             raise ImportError(
-                "Thiếu thư viện gspread / google-auth. "
-                "Chạy: pip install gspread google-auth"
+                "Missing dependencies: gspread / google-auth. "
+                "Run: pip install gspread google-auth"
             )
         self._creds_file = Path(credentials_file)
         self._spreadsheet_id = spreadsheet_id.strip()
@@ -88,16 +88,16 @@ class GSheetWriter:
     # ── Sync ─────────────────────────────────────────────────────────────────
 
     def sync(self, messages: dict | None, tags: dict[str, dict]) -> None:
-        """Ghi toàn bộ tagged items lên worksheet.
+        """Write all tagged items to the worksheet.
 
         Args:
-            messages: Dữ liệu API mới nhất (có key ``Data`` là list items).
+            messages: Latest API data (must have key ``Data`` as a list of items).
             tags:     Dict ``{item_id: {status, note, tagged_at}}``.
         """
         if self._ws is None:
             return
 
-        # Build lookup: id → item dict
+        # Build lookup: id -> item dict
         items_by_id: dict[str, dict] = {}
         if messages and isinstance(messages.get("Data"), list):
             for item in messages["Data"]:
@@ -105,7 +105,7 @@ class GSheetWriter:
                 if item_id:
                     items_by_id[item_id] = item
 
-        # Build rows — sorted by tagged_at ascending
+        # Build rows sorted by tagged_at ascending
         data_rows: list[list] = []
         for item_id, tag_info in sorted(
             tags.items(), key=lambda kv: kv[1].get("tagged_at", "")
@@ -114,7 +114,7 @@ class GSheetWriter:
             row = _build_row(item_id, item, tag_info)
             data_rows.append(row)
 
-        # Write to sheet: header always on row 1, then data
+        # Write to sheet: header on row 1, data from row 2
         self._ws.update([_HEADERS], "A1")
         if data_rows:
             self._ws.update(data_rows, "A2")
@@ -131,7 +131,7 @@ class GSheetWriter:
 
 
 def _build_row(item_id: str, item: dict, tag_info: dict) -> list:
-    """Tạo một hàng dữ liệu cho worksheet từ item + tag."""
+    """Build a worksheet row from an item and its tag info."""
     item_type = item.get("Type", "")
 
     if item.get("IsOwner"):
@@ -167,11 +167,11 @@ def make_gsheet_writer(
     base_dir: Path,
     log_fn: Callable[[str], None],
 ) -> "GSheetWriter | None":
-    """Tạo GSheetWriter từ config dict, trả về None nếu disabled hoặc lỗi.
+    """Create a GSheetWriter from a config dict; returns None if disabled or on error.
 
     Config dict (broadcast_order.gsheets):
       enabled:          true/false
-      credentials_file: "app/gsheets_credentials.json"
+      credentials_file: "broadcast_order/config/gsheets_credentials.json"
       spreadsheet_id:   "<Google Sheets ID>"
       sheet_name:       "Broadcast"
     """

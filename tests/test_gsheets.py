@@ -1,7 +1,7 @@
 """Quick standalone test for Google Sheets sync (no browser needed).
 
 Run:
-    python test_gsheets.py
+    python tests/test_gsheets.py
 """
 
 import sys
@@ -9,19 +9,19 @@ import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 from pathlib import Path
-from app.gsheets import make_gsheet_writer
+from broadcast_order.gsheets import make_gsheet_writer
 
-BASE_DIR = Path(__file__).parent
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ── Config giả lập từ config.yaml ────────────────────────────────────────────
+# ── Config (mirrors broadcast_order/config/config.yaml) ──────────────────────
 gsheets_cfg = {
     "enabled": True,
-    "credentials_file": "app/gsheets_credentials.json",
+    "credentials_file": "broadcast_order/config/gsheets_credentials.json",
     "spreadsheet_id": "1pMEWw-661XgZB5mF7-8APf6BvQeqMnqBZ-_3g3bMOVI",
     "sheet_name": "Broadcast",
 }
 
-# ── Sample messages (giả lập dữ liệu API) ────────────────────────────────────
+# ── Sample messages (simulated API response) ──────────────────────────────────
 sample_messages = {
     "is_sample": True,
     "Data": [
@@ -79,8 +79,8 @@ if __name__ == "__main__":
 
     writer = make_gsheet_writer(gsheets_cfg, BASE_DIR, log)
     if writer is None:
-        print("❌ Không tạo được GSheetWriter — kiểm tra config và credentials.")
+        print("❌ Failed to create GSheetWriter — check config and credentials.")
     else:
         print(f"\nSync {len(sample_tags)} tagged items...\n")
         writer.sync(sample_messages, sample_tags)
-        print("\n✅ Xong! Kiểm tra Google Sheets.")
+        print("\n✅ Done! Check Google Sheets.")

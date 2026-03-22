@@ -55,13 +55,8 @@ def main():
     feature_run = prompt_feature_run()
 
     if feature_run == FEATURE_BROADCAST_ORDER:
-        try:
-            config = load_config(BASE_DIR / "config.yaml")
-        except Exception as exc:
-            log_console(f"Config error: {exc}")
-            return
-        from features.broadcast_order.server import run_broadcast_server
-        run_broadcast_server(config, BASE_DIR, log_console)
+        from broadcast_order.server import run_broadcast_server
+        run_broadcast_server(BASE_DIR, log_console)
         return
 
     try:

@@ -9,7 +9,7 @@ Simple Playwright automation for order handling with conditional actions.
 
 ## Step 1 — Install Git
 
-1. Go to: **https://git-scm.com/downloads/win**
+1. Go to: **<https://git-scm.com/downloads/win>**
 2. Download and run the installer
 3. Use default options — click **Next** until installation finishes
 
@@ -17,7 +17,7 @@ Simple Playwright automation for order handling with conditional actions.
 
 ## Step 2 — Install Python
 
-1. Go to: **https://www.python.org/downloads/windows/**
+1. Go to: **<https://www.python.org/downloads/windows/>**
 2. Click the yellow **"Download Python 3.x.x"** button at the top
 3. Run the downloaded installer
 4. **Important:** Check the box **"Add python.exe to PATH"** before clicking Install
