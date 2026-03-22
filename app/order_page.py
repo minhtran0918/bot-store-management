@@ -1187,7 +1187,6 @@ class OrderPage:
                     comment_text = comment.inner_text(timeout=self._cfg.inner_text_read_ms).strip()
                     if re.search(r"\*{5,}", comment_text):
                         reply_btn = btn
-                        _log(f"  COMMENT: found star comment at index {ci}: '{comment_text[:60]}'")
                         break
                 except Exception:
                     pass
@@ -1497,14 +1496,16 @@ class OrderPage:
 
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
 
-                    match_label = _build_match_label(matched_count, total_products, resolved_tag)
-                    _log(f"  CHECK PRODUCT -> {match_label}")
-
                     # OOS summary
                     in_stock_count = total_products - len(oos_products)
                     if oos_products:
                         oos_names = ", ".join(f"{p['name']}({p['price']})" for p in oos_products)
-                        _log(f"  CHECK OOS -> {len(oos_products)} hết hàng, {in_stock_count} còn hàng | OOS: {oos_names}")
+                        _log(f"  CHECK OOS -> {len(oos_products)} hết hàng, {in_stock_count} còn hàng | {oos_names}")
+                    else:
+                        _log(f"  CHECK OOS -> all in stock ({total_products})")
+
+                    match_label = _build_match_label(matched_count, total_products, resolved_tag)
+                    _log(f"  CHECK PRODUCT -> {match_label}")
 
                     # Save images for actionable tags (not tag-only 1.3)
                     # OOS tags (1.4/2.4): send only in-stock product images
@@ -1784,15 +1785,17 @@ class OrderPage:
                     # Step 1: CHECK ADDRESS
                     _log(f"  CHECK ADDRESS -> {'VALID' if have_address else 'EMPTY'}")
 
-                    # Step 2: CHECK PRODUCT + NOTE
-                    match_label = _build_match_label(matched_count, total_products, resolved_tag)
-                    _log(f"  CHECK PRODUCT -> {match_label}")
-
-                    # OOS summary
+                    # Step 2: CHECK OOS
                     in_stock_count = total_products - len(oos_products)
                     if oos_products:
                         oos_names = ", ".join(f"{p['name']}({p['price']})" for p in oos_products)
-                        _log(f"  CHECK OOS -> {len(oos_products)} hết hàng, {in_stock_count} còn hàng | OOS: {oos_names}")
+                        _log(f"  CHECK OOS -> {len(oos_products)} hết hàng, {in_stock_count} còn hàng | {oos_names}")
+                    else:
+                        _log(f"  CHECK OOS -> all in stock ({total_products})")
+
+                    # Step 3: CHECK PRODUCT + NOTE
+                    match_label = _build_match_label(matched_count, total_products, resolved_tag)
+                    _log(f"  CHECK PRODUCT -> {match_label}")
 
                     # Save images for actionable tags (not tag-only 1.3)
                     # OOS tags (1.4/2.4): send only in-stock product images
