@@ -32,7 +32,7 @@ class BotConfig:
     # Required message keys — must all be present in config.yaml messages section
     _REQUIRED_MESSAGES = [
         "ask_address_templates", "ask_address_no_product_templates", "deposit_template",
-        "oos_line_format", "oos_templates", "comment_fallback_templates",
+        "oos_line_format", "oos_templates", "comment_order_done_templates", "comment_fallback_templates",
     ]
 
     def _validate_timeouts(self) -> None:
@@ -332,6 +332,11 @@ class BotConfig:
     def oos_templates(self) -> list[str]:
         """OOS notification templates. Uses {name} and {oos_lines} placeholders."""
         return self._str_list("oos_templates")
+
+    @property
+    def comment_order_done_templates(self) -> list[str]:
+        """reply comment for TAG 1 (order confirmed). Uses {name} placeholder."""
+        return self._str_list("comment_order_done_templates")
 
     @property
     def comment_fallback_templates(self) -> list[str]:

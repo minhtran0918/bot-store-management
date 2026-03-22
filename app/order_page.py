@@ -1097,7 +1097,7 @@ class OrderPage:
             # If the textarea detached or can no longer be read, the reply box likely closed after send.
             return True
 
-    def _reply_comment_fallback(self, partner_name: str, campaign_label: str = "") -> bool:
+    def _reply_comment_fallback(self, partner_name: str, campaign_label: str = "", templates: list | None = None) -> bool:
         """Reply to the first comment of the FB post matching campaign_label date (latest time on that day)."""
         try:
             from datetime import datetime as _dt, date as _date
@@ -1219,7 +1219,8 @@ class OrderPage:
                 return False
 
             name = partner_name or "bạn"
-            template = random.choice(self._cfg.comment_fallback_templates)
+            tpl_list = templates if templates else self._cfg.comment_fallback_templates
+            template = random.choice(tpl_list)
             fallback_msg = template.format(name=name)
 
             reply_textarea.click(timeout=self._cfg.click_timeout)
@@ -1264,12 +1265,12 @@ class OrderPage:
             _log(f"  [!] Stack trace:\n{traceback.format_exc()}")
             return False
 
-    def _reply_comment_with_retry(self, partner_name: str, campaign_label: str = "") -> bool:
+    def _reply_comment_with_retry(self, partner_name: str, campaign_label: str = "", templates: list | None = None) -> bool:
         """Call _reply_comment_fallback with retry on failure (bot.comment_reply_max_retries)."""
         max_retries = self._cfg.comment_reply_max_retries
         for attempt in range(1, max_retries + 2):  # +2: 1 initial + max_retries extras
             try:
-                ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
+                ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label, templates=templates)
             except Exception as exc:
                 _log(f"  [!] Comment reply attempt {attempt}/{max_retries + 1} error: {exc}")
                 ok = False
@@ -1613,9 +1614,10 @@ class OrderPage:
                                     deposit_msg = self._build_deposit_message(partner_name)
                                     self._send_in_panel(deposit_msg, None, order_code)
 
-                            # reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
-                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
-                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
+                            # reply comment (TAG 1, 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1, TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
+                                _tpls = self._cfg.comment_order_done_templates if resolved_tag == TAG_1 else None
+                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label, templates=_tpls)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
 
@@ -1908,9 +1910,10 @@ class OrderPage:
                                     deposit_msg = self._build_deposit_message(partner_name)
                                     self._send_in_panel(deposit_msg, None, order_code)
 
-                            # reply comment (TAG 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
-                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
-                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label)
+                            # reply comment (TAG 1, 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4)
+                            if self._cfg.enable_comment_reply and resolved_tag in (TAG_1, TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_4):
+                                _tpls = self._cfg.comment_order_done_templates if resolved_tag == TAG_1 else None
+                                comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label, templates=_tpls)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"
                                 if comment_ok:
                                     _log(f"  COMMENT REPLY OK: order={order_code}")

@@ -76,7 +76,7 @@ Orders are classified by address presence + OOS status + product match count. Ta
 
 | Tag | Status Constant | Condition | Actions |
 | --- | --------------- | --------- | ------- |
-| `1` | `HAVE_ADDR_LOW_SP` | Address + 1-3 products matched | IMAGE_PRODUCT, BILL_IMAGE |
+| `1` | `HAVE_ADDR_LOW_SP` | Address + 1-3 products matched | IMAGE_PRODUCT, BILL_IMAGE, reply comment |
 | `1.1` | `HAVE_ADDR_HIGH_SP` | Address + 4+ products matched | IMAGE_PRODUCT, ask deposit, reply comment |
 | `1.2` | `HAVE_ADDR_NO_SP` | Address + 0 matched (all in-stock) | IMAGE_PRODUCT (all) |
 | `1.3` | `HAVE_ADDR_NO_PROD` | Address + no products in order list | Tag only |
@@ -95,7 +95,7 @@ Orders are classified by address presence + OOS status + product match count. Ta
 
 - **ask address** — Ask for address (`ask_address_templates`, random selection) → cases 2, 2.1, 2.2, 2.4; case 2.3 uses `ask_address_no_product_templates`
 - **ask deposit** — Ask for deposit (`deposit_template`, fixed) → cases 1.1, 2.1, and 1.4/2.4 when in-stock count ≥ 4
-- **reply comment** — Reply FB comment (`comment_fallback_templates`, random) → cases 1.1, 2, 2.1
+- **reply comment** — Reply FB comment → case 1 uses `comment_order_done_templates` (order confirmed); cases 1.1, 1.2, 1.4, 2, 2.1, 2.2, 2.4 use `comment_fallback_templates` (random)
 
 Sending priority: images first, then text. CSV "Comment" column tracks reply comment result: `ok` / `send_fail`.
 

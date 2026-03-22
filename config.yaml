@@ -73,6 +73,15 @@ messages:
   oos_templates:
     - "Dạ chị ơi những mẫu hết tồn:\n{oos_lines}\nChị lấy màu khác không chị hay shop bỏ bộ đó ra, shop đi đơn luôn cho chị {name}."
 
+  # reply comment for TAG 1 (order confirmed): FB comment reply when order is placed. {name} = customer name.
+  comment_order_done_templates:
+    - "Dạ chị {name} ơi ! shop lên đơn cho chị rồi ạ ! chị check mess ạ."
+    - "Dạ chị {name} ơi ! shop vừa lên đơn cho chị rồi ạ ! chị check mess ạ."
+    - "Shop lên đơn cho chị rồi ạ ! chị {name} check mess ạ."
+    - "Shop lên đơn cho chị rồi ạ ! chị {name} check mess ạ."
+    - "Dạ chị ! shop lên đơn cho chị rồi ạ ! chị {name} check mess xem ạ !"
+    - "Dạ chị ! shop lên đơn cho chị rồi ạ ! chị  {name} check mess xem ạ !"
+
   # reply comment: FB comment reply templates. {name} = customer name.
   comment_fallback_templates:
     - "Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị không được ạ."
