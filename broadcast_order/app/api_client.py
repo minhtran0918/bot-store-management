@@ -11,7 +11,7 @@ import requests
 from datetime import datetime, timezone
 from pathlib import Path
 
-from broadcast_order.config_loader import cfg
+from broadcast_order.config import cfg
 from broadcast_order.app.auth import get_token
 
 

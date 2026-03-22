@@ -33,7 +33,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from broadcast_order.config_loader import cfg
+from broadcast_order.config import cfg
 from broadcast_order.app.api_client import clean_partner_name
 
 _lock = threading.Lock()

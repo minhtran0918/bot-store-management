@@ -17,7 +17,7 @@ from pathlib import Path
 
 import websockets
 
-from broadcast_order.config_loader import cfg
+from broadcast_order.config import cfg
 from broadcast_order.app.api_client import get_user_info, get_order_bills, get_messages, compute_message_stats
 from broadcast_order.app.message_cache import merge_messages, get_messages_list
 from broadcast_order.app.monitor_store import (

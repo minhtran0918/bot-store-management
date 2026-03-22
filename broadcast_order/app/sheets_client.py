@@ -17,7 +17,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from broadcast_order.config_loader import cfg
+from broadcast_order.config import cfg
 
 logger = logging.getLogger(__name__)
 

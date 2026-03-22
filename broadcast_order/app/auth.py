@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from email.utils import parsedate_to_datetime
 
-from broadcast_order.config_loader import cfg
+from broadcast_order.config import cfg
 
 
 def get_token() -> str:

@@ -12,7 +12,7 @@ Web dashboard to monitor customer messages per order bill.
 - **Backend:** Python 3.11+ — WebSocket server + HTTP server + cronjob
 - **Frontend:** Vanilla HTML/JS — `display.html` (TV/screen, read-only) + `control.html` (staff panel)
 - **Persistence:** Local `monitors.json` + Google Sheets sync
-- **Config:** Single `config.yml` — no hardcoded strings, URLs, or magic values anywhere in code
+- **Config:** Single `config/config.yml` — no hardcoded strings, URLs, or magic values anywhere in code
 - **Logging:** All API requests/responses logged to `data/api.log`
 
 ---
@@ -21,9 +21,10 @@ Web dashboard to monitor customer messages per order bill.
 
 ```
 broadcast_order/
-├── config.yml                   # all config: credentials, URLs, staff, intervals, constants
+├── config/                      # config package + YAML
 │
-├── config_loader.py             # load and validate config.yml, expose typed config object
+│   ├── config.yml               # all config: credentials, URLs, staff, intervals, constants
+│   └── config_loader.py         # load and validate config.yml, expose typed config object
 │
 ├── app/
 │   ├── auth.py                  # TPOS token manager: fetch, cache, auto-refresh
@@ -47,7 +48,7 @@ broadcast_order/
 
 ---
 
-## config.yml
+## config/config.yml
 
 ```yaml
 # TPOS API credentials
@@ -115,7 +116,7 @@ server:
 
 ---
 
-## config_loader.py
+## config/config_loader.py
 
 ```python
 """
@@ -123,7 +124,7 @@ Load and expose config.yml as a typed object.
 All other modules import cfg from here — never read config.yml directly.
 
 Usage:
-    from broadcast_order.config_loader import cfg
+    from broadcast_order.config import cfg
 
     cfg.tpos.base_url
     cfg.tpos.endpoints.token
@@ -142,7 +143,7 @@ from types import SimpleNamespace
 def _dict_to_ns(d: dict) -> SimpleNamespace:
     """Recursively convert dict to SimpleNamespace for dot-access."""
 
-def load_config(path: str = "broadcast_order/config.yml") -> SimpleNamespace:
+def load_config(path: str | Path | None = None) -> SimpleNamespace:
     """Load YAML, validate required fields, return namespace."""
 
 # Module-level singleton — import this everywhere
@@ -750,8 +751,8 @@ def build_payload() -> dict:
 ## Implementation Order
 
 ```
-Step 1: config.yml + config_loader.py
-        → test: python -c "from broadcast_order.config_loader import cfg; print(cfg.tpos.base_url)"
+Step 1: config/config.yml + config/config_loader.py
+        → test: python -c "from broadcast_order.config import cfg; print(cfg.tpos.base_url)"
 
 Step 2: app/auth.py
         → test: python -c "from broadcast_order.app.auth import get_token; print(get_token()[:20])"

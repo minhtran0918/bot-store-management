@@ -1,9 +1,9 @@
 """
 Load and expose config.yml as a typed object.
-All other modules import cfg from here — never read config.yml directly.
+All other modules import cfg from here - never read config.yml directly.
 
 Usage:
-    from broadcast_order.config_loader import cfg
+    from broadcast_order.config import cfg
 
     cfg.tpos.base_url
     cfg.tpos.endpoints.token
@@ -15,9 +15,10 @@ Usage:
     cfg.server.http_port
 """
 
-import yaml
 from pathlib import Path
 from types import SimpleNamespace
+
+import yaml
 
 _REQUIRED_KEYS = [
     "tpos",
@@ -28,6 +29,8 @@ _REQUIRED_KEYS = [
     "google_sheets",
     "server",
 ]
+
+_DEFAULT_CONFIG_PATH = Path(__file__).with_name("config.yml")
 
 
 def _dict_to_ns(d: dict) -> SimpleNamespace:
@@ -41,13 +44,13 @@ def _dict_to_ns(d: dict) -> SimpleNamespace:
     return ns
 
 
-def load_config(path: str = "broadcast_order/config.yml") -> SimpleNamespace:
+def load_config(path: str | Path | None = None) -> SimpleNamespace:
     """Load YAML, validate required fields, return namespace."""
-    config_path = Path(path)
+    config_path = Path(path) if path is not None else _DEFAULT_CONFIG_PATH
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path.resolve()}")
 
-    with open(config_path, encoding="utf-8") as f:
+    with config_path.open(encoding="utf-8") as f:
         raw = yaml.safe_load(f)
 
     if not isinstance(raw, dict):
@@ -60,5 +63,5 @@ def load_config(path: str = "broadcast_order/config.yml") -> SimpleNamespace:
     return _dict_to_ns(raw)
 
 
-# Module-level singleton — import this everywhere
+# Module-level singleton - import this everywhere
 cfg = load_config()
