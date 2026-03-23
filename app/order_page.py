@@ -2015,12 +2015,15 @@ class OrderPage:
             if not skip_tags:
                 return True
             customer_cell = row.locator("td").nth(6)
+            customer_tags = customer_cell.locator("tds-tag")
+            if customer_tags.count() == 0:
+                return True
             for tag_text in skip_tags:
                 if customer_cell.locator(f"tds-tag:has-text('{tag_text}')").first.count() > 0:
                     return False
             return True
         except Exception:
-            return False
+            return True
 
     def _replace_new_with_processed_tag(self, row: Locator, order_code: str, target_tag: str) -> bool:
         order_cell = row.locator("td").nth(4)

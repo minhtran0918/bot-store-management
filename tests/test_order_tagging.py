@@ -1,9 +1,34 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 
 from app.constants import TAG_1, TAG_1_1, TAG_1_2, TAG_2, TAG_2_1, TAG_2_2
-from app.order_page import _build_match_label, _resolve_product_match_tag
+from app.order_page import OrderPage, _build_match_label, _resolve_product_match_tag
+
+
+class _FakeLocator:
+    def __init__(self, *, count_value: int = 0, nth_map: dict[int, "_FakeLocator"] | None = None,
+                 locator_map: dict[str, "_FakeLocator"] | None = None, locator_error: Exception | None = None):
+        self._count_value = count_value
+        self._nth_map = nth_map or {}
+        self._locator_map = locator_map or {}
+        self._locator_error = locator_error
+
+    @property
+    def first(self) -> "_FakeLocator":
+        return self
+
+    def count(self) -> int:
+        return self._count_value
+
+    def nth(self, index: int) -> "_FakeLocator":
+        return self._nth_map[index]
+
+    def locator(self, selector: str) -> "_FakeLocator":
+        if self._locator_error is not None:
+            raise self._locator_error
+        return self._locator_map.get(selector, _FakeLocator())
 
 
 class OrderTaggingTestCase(unittest.TestCase):
@@ -33,6 +58,35 @@ class OrderTaggingTestCase(unittest.TestCase):
 
     def test_partial_match_label_is_explicit(self):
         self.assertEqual(_build_match_label(6, 7, TAG_2_2), "PARTIAL (6/7)")
+
+    def test_customer_without_any_tag_is_treated_as_normal(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(skip_customer_tags=["skip-tag"])
+
+        customer_cell = _FakeLocator(locator_map={"tds-tag": _FakeLocator(count_value=0)})
+        row = _FakeLocator(locator_map={"td": _FakeLocator(nth_map={6: customer_cell})})
+
+        self.assertTrue(order_page._is_customer_normal(row))
+
+    def test_customer_with_skip_tag_is_not_normal(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(skip_customer_tags=["skip-tag"])
+
+        customer_cell = _FakeLocator(locator_map={
+            "tds-tag": _FakeLocator(count_value=1),
+            "tds-tag:has-text('skip-tag')": _FakeLocator(count_value=1),
+        })
+        row = _FakeLocator(locator_map={"td": _FakeLocator(nth_map={6: customer_cell})})
+
+        self.assertFalse(order_page._is_customer_normal(row))
+
+    def test_customer_locator_error_falls_back_to_normal(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(skip_customer_tags=["skip-tag"])
+
+        row = _FakeLocator(locator_error=RuntimeError("locator failed"))
+
+        self.assertTrue(order_page._is_customer_normal(row))
 
 
 if __name__ == "__main__":
