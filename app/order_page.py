@@ -45,6 +45,12 @@ def _remove_diacritics(text: str) -> str:
     return cleaned
 
 
+def _normalize_customer_tag_label(text: str) -> str:
+    """Normalize customer-tag labels so modal text can match config values reliably."""
+    normalized = re.sub(r"\s+", " ", (text or "").strip()).casefold()
+    return re.sub(r"^\d+\s*", "", normalized)
+
+
 def _resolve_product_match_tag(
     have_address: bool,
     total_products: int,
@@ -792,6 +798,42 @@ class OrderPage:
             _log(f"  [WARN] Could not read delivery rate: {exc}")
             return False, ""
 
+    def _read_customer_tag_from_modal(self) -> str:
+        """Read the current customer tag/status shown in the modal dropdown trigger."""
+        selectors = [
+            "span.flex.items-center.font-semibold.font-sans.cursor-pointer:has(i.tdsi-arrow-down-fill)",
+            "span.font-semibold.font-sans.cursor-pointer:has(i.tdsi-arrow-down-fill)",
+            "span.cursor-pointer:has(i.tdsi-arrow-down-fill)",
+        ]
+        modal = self.modal()
+        for selector in selectors:
+            try:
+                label = modal.locator(selector).first
+                if label.count() == 0:
+                    continue
+                text = " ".join(label.inner_text(timeout=self._cfg.inner_text_read_ms).split())
+                if text:
+                    return text
+            except Exception:
+                continue
+        return ""
+
+    def _should_skip_customer_in_modal(self) -> tuple[bool, str]:
+        """Return whether the modal customer tag matches a configured skip tag."""
+        skip_tags = self._cfg.skip_customer_tags
+        if not skip_tags:
+            return False, ""
+
+        customer_tag = self._read_customer_tag_from_modal()
+        if not customer_tag:
+            return False, ""
+
+        normalized_tag = _normalize_customer_tag_label(customer_tag)
+        for skip_tag in skip_tags:
+            if _normalize_customer_tag_label(skip_tag) == normalized_tag:
+                return True, customer_tag
+        return False, customer_tag
+
     def _set_customer_ty_le_thap(self) -> bool:
         """Change customer status from 'Bình thường' to '1 Tỷ lệ thấp' via dropdown in modal."""
         try:
@@ -1015,12 +1057,19 @@ class OrderPage:
     def _read_partner_name(self) -> str:
         """Read partner name from the chat/message panel label."""
         try:
-            label = self.page.locator(
-                "label.text-black.font-semibold.text-title-1, "
-                "label.text-black.font-semibold.text-caption-1"
-            ).first
-            if label.count() > 0:
-                return label.inner_text(timeout=self._cfg.inner_text_read_ms).strip()
+            selectors = [
+                "#chatOmniHeader label.text-black.font-semibold",
+                "div#chatOmniHeader label.text-black.font-semibold",
+                "label.text-black.font-semibold.text-title-1",
+                "label.text-black.font-semibold.text-caption-1",
+            ]
+            for selector in selectors:
+                label = self.page.locator(selector).first
+                if label.count() == 0:
+                    continue
+                text = label.inner_text(timeout=self._cfg.inner_text_read_ms).strip()
+                if text:
+                    return text
         except Exception:
             pass
         return ""
@@ -1238,7 +1287,7 @@ class OrderPage:
                 _log("  [!] Reply textarea not found")
                 return False
 
-            name = partner_name or "bạn"
+            name = partner_name or ""
             tpl_list = templates if templates else self._cfg.comment_fallback_templates
             template = random.choice(tpl_list)
             fallback_msg = template.format(name=name)
@@ -1304,23 +1353,23 @@ class OrderPage:
     def _build_ask_address_message(self, partner_name: str = "") -> str:
         """ask address: Ask for address (no-address cases)."""
         template = random.choice(self._cfg.ask_address_templates)
-        name = partner_name or "bạn"
+        name = partner_name or ""
         return template.format(name=name)
 
     def _build_ask_address_no_product_message(self, partner_name: str = "") -> str:
         """ask address (case 2.3): Ask for address when no products in order list."""
         template = random.choice(self._cfg.ask_address_no_product_templates)
-        name = partner_name or "bạn"
+        name = partner_name or ""
         return template.format(name=name)
 
     def _build_deposit_message(self, partner_name: str = "") -> str:
         """ask deposit: Ask for deposit (cases 1.1, 2.1)."""
-        name = partner_name or "bạn"
+        name = partner_name or ""
         return self._cfg.deposit_template.format(name=name)
 
     def _build_oos_message(self, oos_products: list[dict], partner_name: str = "") -> str:
         """Build OOS notification message listing out-of-stock products."""
-        name = partner_name or "bạn"
+        name = partner_name or ""
         line_fmt = self._cfg.oos_line_format
         oos_lines = "\n".join(
             line_fmt.format(price=p['price'], name=p['name'], forecast=p['forecast'])
@@ -1426,7 +1475,7 @@ class OrderPage:
                 total_amount = cells.nth(7).inner_text().strip()
                 total_qty = cells.nth(8).inner_text().strip()
 
-                # Check customer: must be 'Bình thường' — if not, tag as TAG 0 and write CSV
+                # Check visible customer tag on the list row first; modal will re-check hidden customer tags later.
                 if not self._is_customer_normal(row):
                     processed += 1
                     row_data_t0: dict[str, str] = {
@@ -1486,6 +1535,34 @@ class OrderPage:
                     if not self._verify_modal_order_code(order_code):
                         self._close_edit_modal_safely()
                         raise ValueError(f"modal shows wrong order, expected {order_code}")
+
+                    modal_skip_customer, modal_customer_tag = self._should_skip_customer_in_modal()
+                    if modal_skip_customer:
+                        _log(f"  CUSTOMER TAG (modal): {modal_customer_tag} -> TAG 0, skip")
+                        resolved_tag = TAG_0
+                        row_data["Tag"] = TAG_0
+                        row_data["Address_Status"] = "NOT_BINH_THUONG"
+                        row_data["Note"] = f"customer_tag={modal_customer_tag} (modal)"
+                        row_data["Decision"] = "skip_not_binh_thuong"
+                        self._close_edit_modal_safely()
+                        self._dismiss_notifications()
+                        if TAG_0 != old_tag:
+                            if not self._apply_processed_tag_to_order(order_code, TAG_0):
+                                row_data["Tag"] = ERR
+                                error_count += 1
+                                _log(f"  [!] TAG 0 FAILED")
+                            else:
+                                _log(f"  TAG -> 0")
+                        tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
+                        order_elapsed = time.time() - order_start
+                        _log(f"  DONE ORDER = {order_code} | STT = {processed} | TAG = 0 | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                        csv_writer.write_row(row_data)
+                        _log(f"  CSV +1: total={csv_writer.count}")
+                        rows = self.filtered_order_rows()
+                        count = rows.count()
+                        if i >= count:
+                            break
+                        continue
 
                     # Check delivery rate BEFORE address & product matching
                     is_low_rate, rate_text = self._check_delivery_rate()
@@ -1587,9 +1664,7 @@ class OrderPage:
                             )
                             self._wait_panel_ready()
 
-                            partner_name = ""
-                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
-                                partner_name = self._read_partner_name()
+                            partner_name = self._read_partner_name()
 
                             # IMAGE: send product images first (in-stock only for OOS/mismatch tags)
                             if resolved_tag in OOS_TAGS:
@@ -1789,6 +1864,27 @@ class OrderPage:
                         self._close_edit_modal_safely()
                         raise ValueError(f"modal shows wrong order, expected {order_code}")
 
+                    modal_skip_customer, modal_customer_tag = self._should_skip_customer_in_modal()
+                    if modal_skip_customer:
+                        _log(f"  CUSTOMER TAG (modal): {modal_customer_tag} -> TAG 0, skip")
+                        row_data["Tag"] = TAG_0
+                        row_data["Address_Status"] = "NOT_BINH_THUONG"
+                        row_data["Note"] = f"customer_tag={modal_customer_tag} (modal)"
+                        row_data["Decision"] = "skip_not_binh_thuong"
+                        self._close_edit_modal_safely()
+                        self._dismiss_notifications()
+                        if TAG_0 != old_tag:
+                            if not self._apply_processed_tag_to_order(order_code, TAG_0):
+                                row_data["Tag"] = ERR
+                                error_count += 1
+                                _log(f"  [!] TAG 0 FAILED")
+                            else:
+                                _log(f"  TAG -> 0")
+                        tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
+                        order_elapsed = time.time() - order_start
+                        _log(f"  DONE ORDER = {order_code} | STT = {processed}/{total} | TAG = 0 | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                        continue
+
                     # Check delivery rate BEFORE address & product matching
                     is_low_rate, rate_text = self._check_delivery_rate()
                     if is_low_rate:
@@ -1883,9 +1979,7 @@ class OrderPage:
                             )
                             self._wait_panel_ready()
 
-                            partner_name = ""
-                            if resolved_tag in (TAG_1_1, TAG_1_2, TAG_1_4, TAG_2, TAG_2_1, TAG_2_2, TAG_2_3, TAG_2_4):
-                                partner_name = self._read_partner_name()
+                            partner_name = self._read_partner_name()
 
                             # IMAGE: send product images first (in-stock only for OOS/mismatch tags)
                             if resolved_tag in OOS_TAGS:
@@ -2006,9 +2100,11 @@ class OrderPage:
             return False
 
     def _is_customer_normal(self, row: Locator) -> bool:
-        """Check if the customer in the row does NOT have any skip-tags.
+        """Check visible customer tags on the list row only.
 
-        Returns False (= TAG 0) when any of skip_customer_tags is found.
+        Returns False (= TAG 0) when a visible skip_customer_tag is found.
+        If no customer tag is visible in the list, treat it as normal here and
+        re-check inside the edit modal before address/product processing.
         """
         try:
             skip_tags = self._cfg.skip_customer_tags
@@ -2157,7 +2253,7 @@ class OrderPage:
             total_amount = cells.nth(7).inner_text().strip()
             total_qty = cells.nth(8).inner_text().strip()
 
-            # Check customer label: must be 'Bình thường' — if not, include with TAG 0
+            # Check visible customer tag on list row; if none is shown here, modal will re-check it later.
             if not self._is_customer_normal(row):
                 _log(f"CSV collect: stt={stt} order={order_code} customer not 'Bình thường' -> TAG 0")
                 data.append({

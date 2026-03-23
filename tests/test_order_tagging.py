@@ -9,11 +9,13 @@ from app.order_page import OrderPage, _build_match_label, _resolve_product_match
 
 class _FakeLocator:
     def __init__(self, *, count_value: int = 0, nth_map: dict[int, "_FakeLocator"] | None = None,
-                 locator_map: dict[str, "_FakeLocator"] | None = None, locator_error: Exception | None = None):
+                 locator_map: dict[str, "_FakeLocator"] | None = None, locator_error: Exception | None = None,
+                 inner_text_value: str = ""):
         self._count_value = count_value
         self._nth_map = nth_map or {}
         self._locator_map = locator_map or {}
         self._locator_error = locator_error
+        self._inner_text_value = inner_text_value
 
     @property
     def first(self) -> "_FakeLocator":
@@ -28,6 +30,17 @@ class _FakeLocator:
     def locator(self, selector: str) -> "_FakeLocator":
         if self._locator_error is not None:
             raise self._locator_error
+        return self._locator_map.get(selector, _FakeLocator())
+
+    def inner_text(self, timeout: int | None = None) -> str:
+        return self._inner_text_value
+
+
+class _FakePage:
+    def __init__(self, locator_map: dict[str, _FakeLocator] | None = None):
+        self._locator_map = locator_map or {}
+
+    def locator(self, selector: str) -> _FakeLocator:
         return self._locator_map.get(selector, _FakeLocator())
 
 
@@ -87,6 +100,58 @@ class OrderTaggingTestCase(unittest.TestCase):
         row = _FakeLocator(locator_error=RuntimeError("locator failed"))
 
         self.assertTrue(order_page._is_customer_normal(row))
+
+    def test_modal_customer_tag_matching_skip_list_is_skipped(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(skip_customer_tags=["1 Tỷ lệ thấp"], inner_text_read_ms=1000)
+
+        modal = _FakeLocator(locator_map={
+            "span.flex.items-center.font-semibold.font-sans.cursor-pointer:has(i.tdsi-arrow-down-fill)": _FakeLocator(
+                count_value=1,
+                inner_text_value="Tỷ lệ thấp",
+            )
+        })
+        order_page.modal = lambda: modal
+
+        should_skip, customer_tag = order_page._should_skip_customer_in_modal()
+
+        self.assertTrue(should_skip)
+        self.assertEqual(customer_tag, "Tỷ lệ thấp")
+
+    def test_modal_binh_thuong_customer_tag_is_not_skipped(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(skip_customer_tags=["1 Tỷ lệ thấp"], inner_text_read_ms=1000)
+
+        modal = _FakeLocator(locator_map={
+            "span.flex.items-center.font-semibold.font-sans.cursor-pointer:has(i.tdsi-arrow-down-fill)": _FakeLocator(
+                count_value=1,
+                inner_text_value="Bình thường",
+            )
+        })
+        order_page.modal = lambda: modal
+
+        should_skip, customer_tag = order_page._should_skip_customer_in_modal()
+
+        self.assertFalse(should_skip)
+        self.assertEqual(customer_tag, "Bình thường")
+
+    def test_read_partner_name_prefers_chat_header_label(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(inner_text_read_ms=1000)
+        order_page.page = _FakePage(locator_map={
+            "#chatOmniHeader label.text-black.font-semibold": _FakeLocator(
+                count_value=1,
+                inner_text_value="Thảo My",
+            )
+        })
+
+        self.assertEqual(order_page._read_partner_name(), "Thảo My")
+
+    def test_build_ask_address_message_uses_empty_name_when_missing(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(ask_address_templates=["Xin chào {name}!"])
+
+        self.assertEqual(order_page._build_ask_address_message(""), "Xin chào !")
 
 
 if __name__ == "__main__":
