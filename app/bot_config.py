@@ -156,6 +156,11 @@ class BotConfig:
         return bool(self._features.get("enable_send_product_image", True))
 
     @property
+    def enable_create_bill(self) -> bool:
+        """Create sales bill (phiếu bán hàng) for TAG 1."""
+        return bool(self._features.get("enable_create_bill", True))
+
+    @property
     def enable_send_bill_image(self) -> bool:
         """Send sales bill image (phiếu mua hàng) for TAG 1."""
         return bool(self._features.get("enable_send_bill_image", True))
