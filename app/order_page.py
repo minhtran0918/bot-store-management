@@ -1636,7 +1636,7 @@ class OrderPage:
                     row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
 
                     bill_created = False
-                    if resolved_tag == TAG_1 and self._cfg.enable_send_bill_image:
+                    if resolved_tag == TAG_1 and self._cfg.enable_create_bill:
                         bill_created = self._create_order_bill(order_code)
 
                     self._close_edit_modal_safely()
@@ -1954,7 +1954,7 @@ class OrderPage:
 
                     # TAG 1: create sales bill (phiếu bán hàng) while modal is open
                     bill_created = False
-                    if resolved_tag == TAG_1 and self._cfg.enable_send_bill_image:
+                    if resolved_tag == TAG_1 and self._cfg.enable_create_bill:
                         bill_created = self._create_order_bill(order_code)
 
                     self._close_edit_modal_safely()
