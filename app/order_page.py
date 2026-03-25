@@ -1673,11 +1673,6 @@ class OrderPage:
                             elif self._cfg.enable_send_product_image and saved_images:
                                 self._send_batched_in_open_panel("", saved_images, order_code)
 
-                            # BILL: send bill image before follow-up texts
-                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
-                                self._send_bill_image_in_panel(order_code)
-                                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
-
                             # OOS MSG: send OOS notification (TAG 1.4, 2.4)
                             if self._cfg.enable_send_oos_message and resolved_tag in OOS_TAGS and oos_products:
                                 oos_msg = self._build_oos_message(oos_products, partner_name)
@@ -1715,6 +1710,11 @@ class OrderPage:
                                 comment_ok = self._reply_comment_with_retry(partner_name, campaign_label=campaign_label, templates=_tpls)
                                 row_data["Comment"] = "ok" if comment_ok else "send_fail"
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
+
+                            # BILL: send bill image after reply comment (TAG 1 only)
+                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
+                                self._send_bill_image_in_panel(order_code)
+                                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
                             self.page.keyboard.press("Escape")
                             self.page.wait_for_timeout(self._cfg.escape_close_ms)
@@ -1988,11 +1988,6 @@ class OrderPage:
                             elif self._cfg.enable_send_product_image and saved_images:
                                 self._send_batched_in_open_panel("", saved_images, order_code)
 
-                            # BILL: send bill image before follow-up texts
-                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
-                                self._send_bill_image_in_panel(order_code)
-                                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
-
                             # OOS MSG: send OOS notification (TAG 1.4, 2.4)
                             if self._cfg.enable_send_oos_message and resolved_tag in OOS_TAGS and oos_products:
                                 oos_msg = self._build_oos_message(oos_products, partner_name)
@@ -2034,6 +2029,11 @@ class OrderPage:
                                 else:
                                     _log(f"  [!] COMMENT REPLY FAILED: order={order_code}")
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
+
+                            # BILL: send bill image after reply comment (TAG 1 only)
+                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
+                                self._send_bill_image_in_panel(order_code)
+                                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
                             self.page.keyboard.press("Escape")
                             self.page.wait_for_timeout(self._cfg.escape_close_ms)
