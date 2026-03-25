@@ -1615,16 +1615,20 @@ class OrderPage:
                     # OOS tags (1.4/2.4): send only in-stock product images
                     # Mismatch tags (1.2/2.2): send only in-stock product images (skip OOS)
                     # Normal tags: filter by note_prices
+                    # Skip saving if the corresponding send feature is disabled
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
                         oos_price_list = [p["price"] for p in oos_products] if oos_products else None
                         if resolved_tag in OOS_TAGS:
                             # OOS tags: send only in-stock product images
-                            saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
+                            if self._cfg.enable_send_oos_image:
+                                saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
                         elif resolved_tag in (TAG_1_2, TAG_2_2):
                             # Mismatch (all in-stock): send ALL product images
-                            saved_images = self.save_product_images(order_code, data_dir)
+                            if self._cfg.enable_send_product_image:
+                                saved_images = self.save_product_images(order_code, data_dir)
                         else:
-                            saved_images = self.save_product_images(order_code, data_dir, note_prices)
+                            if self._cfg.enable_send_product_image:
+                                saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
                     row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
                     row_data["Match_Product"] = match_label
@@ -1632,7 +1636,7 @@ class OrderPage:
                     row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
 
                     bill_created = False
-                    if resolved_tag == TAG_1:
+                    if resolved_tag == TAG_1 and self._cfg.enable_send_bill_image:
                         bill_created = self._create_order_bill(order_code)
 
                     self._close_edit_modal_safely()
@@ -1929,15 +1933,19 @@ class OrderPage:
                     # OOS tags (1.4/2.4): send only in-stock product images
                     # Mismatch tags (1.2/2.2): all in-stock, send ALL product images
                     # Normal tags: filter by note_prices
+                    # Skip saving if the corresponding send feature is disabled
                     if resolved_tag not in TAG_ONLY_TAGS and data_dir is not None:
                         oos_price_list = [p["price"] for p in oos_products] if oos_products else None
                         if resolved_tag in OOS_TAGS:
-                            saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
+                            if self._cfg.enable_send_oos_image:
+                                saved_images = self.save_product_images(order_code, data_dir, oos_prices=oos_price_list)
                         elif resolved_tag in (TAG_1_2, TAG_2_2):
                             # Mismatch (all in-stock): send ALL product images
-                            saved_images = self.save_product_images(order_code, data_dir)
+                            if self._cfg.enable_send_product_image:
+                                saved_images = self.save_product_images(order_code, data_dir)
                         else:
-                            saved_images = self.save_product_images(order_code, data_dir, note_prices)
+                            if self._cfg.enable_send_product_image:
+                                saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
                     row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
                     row_data["Match_Product"] = match_label
@@ -1946,7 +1954,7 @@ class OrderPage:
 
                     # TAG 1: create sales bill (phiếu bán hàng) while modal is open
                     bill_created = False
-                    if resolved_tag == TAG_1:
+                    if resolved_tag == TAG_1 and self._cfg.enable_send_bill_image:
                         bill_created = self._create_order_bill(order_code)
 
                     self._close_edit_modal_safely()
