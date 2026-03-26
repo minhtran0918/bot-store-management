@@ -1,0 +1,49 @@
+tpos:
+  base_url: "https://linhdanshopld.tpos.vn"
+  client_id: "tmtWebApp"
+  grant_type: "password"
+  username: "test"
+  password: "Test@12345"
+  scope: "profile"
+
+  endpoints:
+    token:        "/token"
+    user_info:    "/rest/v1.0/user/info"
+    order_bills:  "/odata/FastSaleOrder/ODataService.GetView"
+    messages:     "/api-ms/chatomni/v1/messages/all"
+
+  message_type:       4
+  message_channel_id: "101008152679066"
+
+  order_top:             100
+  order_date_range_days: 30
+  order_filter_type:     "invoice"
+  order_orderby:         "DateInvoice desc"
+
+staff:
+  - "An"
+  - "Van"
+  - "Linh"
+
+fetch:
+  message_interval_seconds:    600
+  delay_between_users_seconds: 1
+
+token:
+  file:                   "broadcast_order/data/token.json"
+  refresh_buffer_seconds: 300
+
+data:
+  monitors_file: "broadcast_order/data/monitors.json"
+  messages_dir:  "broadcast_order/data/messages"
+  log_file:      "broadcast_order/data/api.log"
+
+google_sheets:
+  credentials_file: "broadcast_order/config/gsheets_credentials.json"
+  spreadsheet_id:   "1pMEWw-661XgZB5mF7-8APf6BvQeqMnqBZ-_3g3bMOVI"
+  monitors_sheet:   "Monitors"
+  messages_sheet:   "Messages"
+
+server:
+  http_port: 8888
+  ws_port:   8765
