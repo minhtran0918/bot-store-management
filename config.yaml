@@ -16,10 +16,10 @@ bot:
 features:
   enable_comment_reply: true    # reply comment: reply to FB comment. Disable when buggy.
   enable_send_message: true     # ask address/deposit: send inbox text messages (ask address, deposit).
-  enable_send_product_image: false  # Send product images to customer.
+  enable_send_product_image: true  # Send product images to customer.
   enable_create_bill: true       # Create sales bill (phiếu bán hàng) for TAG 1.
-  enable_send_bill_image: false  # Send sales bill image (phiếu mua hàng) for TAG 1.
-  enable_send_oos_image: false   # Send in-stock product images for OOS orders (TAG 1.4/2.4).
+  enable_send_bill_image: true  # Send sales bill image (phiếu mua hàng) for TAG 1.
+  enable_send_oos_image: true   # Send in-stock product images for OOS orders (TAG 1.4/2.4).
   enable_send_oos_message: true # Send OOS notification message listing out-of-stock products.
 
 # ─── Playwright timing (milliseconds) ────────────────────────────────────────
