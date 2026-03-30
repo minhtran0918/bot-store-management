@@ -1038,12 +1038,23 @@ class OrderPage:
         # Try clicking three-dots → send bill image, retry if modal doesn't disappear
         for attempt in range(max_retries + 1):
             try:
-                # Step 1: Click three-dots button
-                three_dots_btn = self.page.locator(
-                    "button:has(i.tdsi-three-dots-horizon-fill)"
+                # Step 1: Click three-dots button — scope to first bill row to avoid
+                # hitting the hidden tds-tabs-nav-more button with same icon
+                first_bill_row = self.page.locator(
+                    "virtual-scroller .scrollable-content > div, "
+                    "div.flex.items-center.border-b"
                 ).first
+                if first_bill_row.count() > 0:
+                    three_dots_btn = first_bill_row.locator(
+                        "button:has(i.tdsi-three-dots-horizon-fill)"
+                    ).first
+                else:
+                    three_dots_btn = self.page.locator(
+                        "button[tds-popover]:has(i.tdsi-three-dots-horizon-fill)"
+                    ).first
                 if three_dots_btn.count() == 0:
                     raise RuntimeError("three-dots button not found")
+                three_dots_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
                 three_dots_btn.click(timeout=self._cfg.click_timeout)
                 self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
 
@@ -1688,8 +1699,13 @@ class OrderPage:
                     row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
 
                     bill_created = False
-                    if resolved_tag == TAG_1 and self._cfg.enable_create_bill:
-                        bill_created = self._create_order_bill(order_code)
+                    if resolved_tag == TAG_1:
+                        if self._cfg.enable_create_bill:
+                            bill_created = self._create_order_bill(order_code)
+                        elif self._cfg.enable_send_bill_image:
+                            # Skip create but allow send (test mode: assume bill already exists)
+                            bill_created = True
+                            _log(f"  BILL: create skipped, send enabled — assuming bill exists")
 
                     self._close_edit_modal_safely()
                     self._dismiss_notifications()
@@ -2006,8 +2022,13 @@ class OrderPage:
 
                     # TAG 1: create sales bill (phiếu bán hàng) while modal is open
                     bill_created = False
-                    if resolved_tag == TAG_1 and self._cfg.enable_create_bill:
-                        bill_created = self._create_order_bill(order_code)
+                    if resolved_tag == TAG_1:
+                        if self._cfg.enable_create_bill:
+                            bill_created = self._create_order_bill(order_code)
+                        elif self._cfg.enable_send_bill_image:
+                            # Skip create but allow send (test mode: assume bill already exists)
+                            bill_created = True
+                            _log(f"  BILL: create skipped, send enabled — assuming bill exists")
 
                     self._close_edit_modal_safely()
                     self._dismiss_notifications()
@@ -2192,12 +2213,22 @@ class OrderPage:
             add_tag_button = order_cell.locator(
                 "button[tds-tooltip='Thêm nhãn'], button:has(i.tdsi-price-tag-fill)"
             ).first
+            # Scroll the button into view before clicking so it is inside the viewport
+            try:
+                add_tag_button.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+            except Exception:
+                pass
             add_tag_button.click(timeout=self._cfg.click_timeout)
 
             tag_input = self._first([
                 ".tds-select-input input.tds-select-search-input:visible",
                 "tds-select-search input.tds-select-search-input:visible",
             ])
+            # Use JS focus+click to avoid viewport boundary issues
+            try:
+                tag_input.evaluate("el => { el.scrollIntoView({block: 'center'}); el.focus(); }")
+            except Exception:
+                pass
             tag_input.click(timeout=self._cfg.click_timeout)
             tag_input.fill("")
 
@@ -2416,6 +2447,7 @@ class OrderPage:
         search_input = self.campaign_search_input()
         search_input.fill(campaign_date_text)
         # Wait for dropdown results to load before confirming selection
+        self.page.wait_for_timeout(self._cfg.filter_search_settle_ms)
         self.page.wait_for_timeout(self._cfg.filter_search_ms)
         search_input.press("Enter")
 

@@ -23,7 +23,7 @@ class BotConfig:
         "click", "click_slow", "modal", "panel_open", "text_fill",
         "image_attach", "send_post_base",
         "send_post_per_image", "overlay_dismiss", "tag_update",
-        "pagination", "filter_search", "filter_apply", "escape_close",
+        "pagination", "filter_search", "filter_search_settle", "filter_apply", "escape_close",
         "table_load", "spinner_hide", "error_recheck", "comment_reply_post",
         "notification_click", "inner_text_read", "tag_clear", "tag_backspace",
         "bill_create_step", "bill_image_load", "bill_reload_retry_delay",
@@ -238,6 +238,11 @@ class BotConfig:
     def filter_search_ms(self) -> int:
         """Wait after typing in the campaign filter search input (results load)."""
         return self._t("filter_search")
+
+    @property
+    def filter_search_settle_ms(self) -> int:
+        """Extra wait after fill before pressing Enter (let dropdown settle)."""
+        return self._t("filter_search_settle")
 
     @property
     def filter_apply_ms(self) -> int:
