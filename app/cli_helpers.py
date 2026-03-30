@@ -7,8 +7,6 @@ from app.cli_menu import select, text_input, show_summary
 
 FEATURE_CONFIRM_ORDER = "confirm_order"
 FEATURE_ADD_PRODUCT = "add_product_to_order"
-FEATURE_BROADCAST_ORDER = "broadcast_order"
-
 TOTAL_STEPS = 3
 
 
@@ -16,7 +14,6 @@ def prompt_feature_run() -> str:
     choices = [
         {"name": "confirm_order        — xác nhận đơn hàng (check sản phẩm/địa chỉ, gửi tin nhắn ảnh & bill cho khách)", "value": FEATURE_CONFIRM_ORDER},
         {"name": "add_product_to_order — thêm sản phẩm vào đơn hàng (thêm sản phẩm & chỉnh giá từ file csv)", "value": FEATURE_ADD_PRODUCT},
-        {"name": "broadcast_order      — khởi động live feed server (theo dõi tin nhắn & đơn hàng theo thời gian thực)", "value": FEATURE_BROADCAST_ORDER},
     ]
     return select("Select Feature", choices, step=1, total=TOTAL_STEPS, default=FEATURE_CONFIRM_ORDER)
 
