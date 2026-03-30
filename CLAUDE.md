@@ -4,10 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Playwright-based automation bot for managing ecommerce orders on `linhdanshopld.tpos.vn`. Two primary workflows:
+Playwright-based automation bot for managing ecommerce orders on `linhdanshopld.tpos.vn`. Currently one active workflow:
 
-- **collect_order**: Scrapes filtered orders, enriches with tags/address status/product matches, sends messages, exports to CSV
-- **confirm_order**: Takes a CSV of order codes and performs batch confirmation/edit actions
+- **confirm_order**: The only CLI-exposed feature. Despite its name, it runs `run_collect_order_flow()` — scrapes filtered orders, enriches with tags/address status/product matches, sends messages, exports to CSV. The confirm/edit logic in `features/confirm_order.py` is placeholder/incomplete.
 
 ## Setup
 
@@ -36,14 +35,14 @@ python -m unittest tests.test_rules -v
 
 ### Entry Point Flow (`main.py`)
 
-1. CLI prompts (feature, campaign date, CSV path)
+1. CLI prompts: feature (only `confirm_order` available), campaign date, price code mapping (A1-A9 → price)
 2. Load & validate `config.yaml` → `BotConfig` validates all required timeouts at startup
 3. Launch Playwright Chromium with session persistence (`data/session.json`)
-4. Maximize browser window via `window.resizeTo(screen.availWidth, screen.availHeight)` (Playwright locks viewport size, so JS maximize is needed)
+4. Maximize browser window via JS `window.resizeTo()` (Playwright locks viewport size, so JS maximize is needed; uses CSS pixels from `screen.availWidth/Height` which already account for Windows display scaling)
 5. Authenticate: saved token → auto-login → manual login (300s wait)
 6. Capture Bearer token to `data/auth_token.json`
 7. Navigate to orders page, apply campaign filter
-8. Execute feature (collect or confirm)
+8. Run `run_collect_order_flow()` (collect, enrich, send messages, export CSV)
 9. Save session state, cleanup
 
 ### Module Responsibilities
@@ -57,12 +56,12 @@ python -m unittest tests.test_rules -v
 | `app/store.py` | State persistence (per-day JSON), CSV export, action audit logging |
 | `app/rules.py` | Order classification (`classify_order`) and action decision (`decide_action`) logic |
 | `app/constants.py` | Full tag system (TAG_0 through TAG_2_4), RECHECK_TAGS, OOS_TAGS, TAG_ONLY_TAGS, STATUS_TO_TAG mapping |
-| `app/cli_helpers.py` | InquirerPy prompts for feature/date/CSV selection |
+| `app/cli_helpers.py` | InquirerPy prompts for feature/date/price-code-mapping selection |
 | `app/bot_config.py` | Typed config accessor — validates required timeouts at startup, exposes feature flags and message templates |
 | `app/cli_menu.py` | ANSI terminal UI rendering (banner, select, summary) |
-| `features/collect_order.py` | Two-pass: read all rows → enrich each row → export CSV. Respects `bot.test_max_collect_records` cap |
-| `features/confirm_order.py` | Load order codes from CSV → find each row via pagination → perform edit |
-| `features/ask_address.py` | Single-order processing: open modal, classify, send ask-address message if needed |
+| `app/note_parser.py` | Price extraction from order note text — handles Vietnamese patterns, phone number exclusion, A1-A9 code mapping |
+| `features/collect_order.py` | Single-pass collect+enrich via `order_page.collect_and_enrich_single_pass()` → export CSV. Respects `bot.test_max_collect_records` cap |
+| `features/confirm_order.py` | CSV loading + placeholder edit logic (incomplete — confirm/edit actions not yet implemented) |
 | `workflows/navigation.py` | `goto_orders()` — navigate to order URL |
 | `runtime/process_logger.py` | Timestamped console logging, exception capture, debug browser keep-alive |
 
@@ -100,6 +99,10 @@ Orders are classified by address presence + OOS status + product match count. Ta
 Sending priority: images first, then text. CSV "Comment" column tracks reply comment result: `ok` / `send_fail`.
 
 **FB comment reply**: prioritises comments containing 5+ consecutive `*` anywhere (e.g. `92k **********`). Falls back to first comment of the live day.
+
+### Price Code Mapping (A-codes)
+
+CLI prompts for A1-A9 price mappings at startup. Each A-code maps to a price in thousands (e.g., A1=185 means 185k VND). `app/note_parser.py` extracts prices from order notes: A-codes take priority over explicit prices on the same line; lines with 2+ ambiguous prices are skipped. Phone numbers and time/weight patterns are excluded from extraction.
 
 ### Test Cap
 
