@@ -36,6 +36,7 @@ timeouts:
   tag_update: 300        # After a tag is applied
   pagination: 350        # After navigating to next page
   filter_search: 400     # After typing in campaign filter (wait for results)
+  filter_search_settle: 1000  # Extra wait after fill before pressing Enter (let dropdown settle)
   filter_apply: 800      # After clicking Apply filter
   escape_close: 500      # After pressing Escape to close a panel
   table_load: 4000       # Wait for order table rows to appear after navigation
@@ -125,4 +126,4 @@ auth:
 
 debug:
   keep_open: true
-  keep_open_seconds: 180
+  keep_open_seconds: 10

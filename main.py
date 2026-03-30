@@ -11,18 +11,12 @@ from app.store import log_action
 from app.config_loader import load_config
 from app.cli_helpers import (
     FEATURE_CONFIRM_ORDER,
-    FEATURE_ADD_PRODUCT,
     prompt_campaign_label,
     prompt_price_code_mapping,
-    prompt_existing_csv_required,
     prompt_feature_run,
 )
 from app.cli_menu import show_banner, show_summary
-from features.confirm_order import (
-    load_order_codes_from_csv,
-    run_confirm_order_from_csv,
-    set_confirm_reset_table_view,
-)
+from features.confirm_order import set_confirm_reset_table_view
 from features.collect_order import run_collect_order_flow
 from workflows.navigation import goto_orders
 from runtime.process_logger import (
@@ -60,25 +54,10 @@ def main():
         return
 
     csv_output_path: Path | None = None
-    confirm_input_csv_path: Path | None = None
-    confirm_order_codes: list[str] = []
     price_code_mapping: dict[str, int | None] = {}
 
     if feature_run == FEATURE_CONFIRM_ORDER:
         price_code_mapping = prompt_price_code_mapping()
-    elif feature_run == FEATURE_ADD_PRODUCT:
-        confirm_input_csv_path = prompt_existing_csv_required(DATA_DIR)
-        if confirm_input_csv_path is None:
-            return
-        csv_output_path = confirm_input_csv_path
-        try:
-            confirm_order_codes = load_order_codes_from_csv(confirm_input_csv_path)
-        except Exception as exc:
-            log_console(f"CSV input error: {exc}")
-            return
-        if not confirm_order_codes:
-            log_console(f"CSV input has no valid order codes: {confirm_input_csv_path}")
-            return
 
     try:
         config = load_config(BASE_DIR / "config.yaml")
@@ -88,7 +67,6 @@ def main():
 
     log_exception_trace = build_exception_logger(ERROR_DIR, ERROR_LOG_FILE, log_console)
 
-    confirm_count_text = str(len(confirm_order_codes)) if feature_run == FEATURE_ADD_PRODUCT else "n/a"
     active_codes = {k: v for k, v in price_code_mapping.items() if v is not None}
     price_map_text = ", ".join(f"{k}={v}" for k, v in active_codes.items()) if active_codes else "(none)"
 
@@ -98,14 +76,12 @@ def main():
     ]
     if feature_run == FEATURE_CONFIRM_ORDER:
         summary_items.append(("Price Codes", price_map_text))
-    if feature_run == FEATURE_ADD_PRODUCT:
-        summary_items.append(("Orders", confirm_count_text))
     show_summary(summary_items)
 
     log_console("=" * 80)
     log_console(
         f"[CLI] Selected options | feature={feature_run} | campaign='{campaign_label}' "
-        f"| price_codes={price_map_text} | confirm_orders={confirm_count_text}"
+        f"| price_codes={price_map_text}"
     )
     log_console("[START] Begin automation process")
 
@@ -150,7 +126,7 @@ def main():
 
             log_action("system", "feature", "ok", feature_run)
 
-            if feature_run in (FEATURE_CONFIRM_ORDER, FEATURE_ADD_PRODUCT):
+            if feature_run == FEATURE_CONFIRM_ORDER:
                 try:
                     before_rows = order_page.all_rows().count()
                     log_console(f"[FILTER] Rows before applying campaign filter: {before_rows}")
@@ -171,20 +147,6 @@ def main():
                     data_dir=DATA_DIR,
                     bot_config=bot_config,
                     price_code_mapping=price_code_mapping,
-                )
-
-            if feature_run == FEATURE_ADD_PRODUCT:
-                log_console(f"[ADD_PRODUCT] Input CSV selected: {confirm_input_csv_path}")
-                set_confirm_reset_table_view(lambda: order_page.apply_campaign_filter(campaign_label))
-                run_confirm_order_from_csv(
-                    order_page=order_page,
-                    page=page,
-                    order_codes=confirm_order_codes,
-                    error_dir=ERROR_DIR,
-                    error_log_file=ERROR_LOG_FILE,
-                    log_console=log_console,
-                    log_action=log_action,
-                    log_exception_trace=log_exception_trace,
                 )
 
             if interrupted:

@@ -6,15 +6,12 @@ from pathlib import Path
 from app.cli_menu import select, text_input, show_summary
 
 FEATURE_CONFIRM_ORDER = "confirm_order"
-FEATURE_ADD_PRODUCT = "add_product_to_order"
-
 TOTAL_STEPS = 3
 
 
 def prompt_feature_run() -> str:
     choices = [
         {"name": "confirm_order        — xác nhận đơn hàng (check sản phẩm/địa chỉ, gửi tin nhắn ảnh & bill cho khách)", "value": FEATURE_CONFIRM_ORDER},
-        {"name": "add_product_to_order — thêm sản phẩm vào đơn hàng (thêm sản phẩm & chỉnh giá từ file csv)", "value": FEATURE_ADD_PRODUCT},
     ]
     return select("Select Feature", choices, step=1, total=TOTAL_STEPS, default=FEATURE_CONFIRM_ORDER)
 
@@ -85,15 +82,6 @@ def prompt_campaign_label() -> str:
     return yesterday_label
 
 
-def _list_existing_order_csv_files(data_dir: Path) -> list[Path]:
-    if not data_dir.exists():
-        return []
-
-    files = [p for p in data_dir.glob("orders_*.csv") if p.is_file()]
-    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return files
-
-
 MAX_A_CODES = 9  # A1..A9
 
 
@@ -123,17 +111,3 @@ def prompt_price_code_mapping() -> dict[str, int | None]:
     return mapping
 
 
-def prompt_existing_csv_required(data_dir: Path) -> Path | None:
-    csv_files = _list_existing_order_csv_files(data_dir)
-    if not csv_files:
-        from runtime.process_logger import log_console
-        log_console("No existing orders CSV found. Please run collect_order first.")
-        return None
-
-    choices = []
-    for path in csv_files:
-        modified_at = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
-        choices.append({"name": f"{path.name}  ({modified_at})", "value": str(path)})
-
-    selected = select("Select Input CSV", choices, step=3, total=TOTAL_STEPS)
-    return Path(selected)

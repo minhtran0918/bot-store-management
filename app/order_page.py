@@ -693,8 +693,21 @@ class OrderPage:
     def _dismiss_notifications(self) -> None:
         """Close any popup notifications or open overlays that could intercept clicks."""
         try:
-            # Close open CDK overlay dropdowns (e.g. tag dropdown left open after tag update)
-            if self.page.locator("div.cdk-overlay-backdrop").count() > 0:
+            # Close stacked overlays (chat panel, bill modal, dropdowns) that block clicks
+            overlay_indicators = (
+                "div.cdk-overlay-backdrop",
+                "div.tds-drawer-mask",
+                "app-modal-list-bill",
+                "div.chat-body",
+            )
+            for _ in range(3):
+                has_overlay = any(
+                    self.page.locator(sel).count() > 0
+                    and self.page.locator(sel).first.is_visible()
+                    for sel in overlay_indicators
+                )
+                if not has_overlay:
+                    break
                 self.page.keyboard.press("Escape")
                 self.page.wait_for_timeout(self._cfg.overlay_dismiss_ms)
         except Exception:
@@ -917,6 +930,27 @@ class OrderPage:
         return have_address, matched_count, total_products, tag, note_prices, oos_products
 
     def _close_edit_modal_safely(self) -> None:
+        # Dismiss any stacked overlays (message panel, bill modal, popover)
+        # before closing the edit modal — prevents "intercepts pointer events" errors
+        try:
+            blocking_selectors = (
+                "app-modal-list-bill",
+                "div.cdk-overlay-backdrop",
+                "div.tds-drawer-mask",
+                "tds-modal-container",
+            )
+            for _ in range(3):
+                has_overlay = any(
+                    self.page.locator(sel).first.is_visible()
+                    for sel in blocking_selectors
+                    if self.page.locator(sel).count() > 0
+                )
+                if not has_overlay:
+                    break
+                self.page.keyboard.press("Escape")
+                self.page.wait_for_timeout(300)
+        except Exception:
+            pass
         try:
             self.close_button().click(timeout=self._cfg.click_timeout)
         except Exception:
@@ -979,36 +1013,55 @@ class OrderPage:
         """Send bill image within the open message panel.
 
         Steps: click 'Phiếu bán hàng' → first item three-dots → 'Gửi ảnh phiếu bán hàng'
-        → wait for image to load → send. Retries with reload button on failure.
+        → wait for modal to disappear (5s) → send. If modal stays visible, retry
+        steps 1-2 up to bill_reload_retry_count times.
         """
         max_retries = self._cfg.bill_reload_retry_count
         retry_delay_ms = self._cfg.bill_reload_retry_delay_ms
+        modal_timeout_ms = 5000
 
+        try:
+            # Click "Phiếu bán hàng" button (file icon)
+            bill_btn = self.page.locator(
+                "button[tooltiptitle='Phiếu bán hàng'], "
+                "button:has(i.tdsi-file-line)"
+            ).first
+            if bill_btn.count() == 0:
+                _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
+                return False
+            bill_btn.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+        except Exception as exc:
+            _log(f"  [!] BILL IMG: failed to open bill tab for {order_code}: {exc}")
+            return False
+
+        # Try clicking three-dots → send bill image, retry if modal doesn't disappear
         for attempt in range(max_retries + 1):
             try:
-                # Click "Phiếu bán hàng" button (file icon)
-                bill_btn = self.page.locator(
-                    "button[tooltiptitle='Phiếu bán hàng'], "
-                    "button:has(i.tdsi-file-line)"
+                # Step 1: Click three-dots button — scope to first bill row to avoid
+                # hitting the hidden tds-tabs-nav-more button with same icon
+                first_bill_row = self.page.locator(
+                    "virtual-scroller .scrollable-content > div, "
+                    "div.flex.items-center.border-b"
                 ).first
-                if bill_btn.count() == 0:
-                    _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
-                    return False
-                bill_btn.click(timeout=self._cfg.click_timeout)
-                self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
-
-                # Click three-dots button (span with tdsi-three-dots-horizon-fill icon)
-                three_dots_btn = self.page.locator(
-                    "span.flex.items-center:has(i.tdsi-three-dots-horizon-fill)"
-                ).first
+                if first_bill_row.count() > 0:
+                    three_dots_btn = first_bill_row.locator(
+                        "button:has(i.tdsi-three-dots-horizon-fill)"
+                    ).first
+                else:
+                    three_dots_btn = self.page.locator(
+                        "button[tds-popover]:has(i.tdsi-three-dots-horizon-fill)"
+                    ).first
                 if three_dots_btn.count() == 0:
                     raise RuntimeError("three-dots button not found")
+                three_dots_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
                 three_dots_btn.click(timeout=self._cfg.click_timeout)
                 self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
 
-                # Click "Gửi ảnh phiếu bán hàng" from popup
-                send_bill_img_btn = self.page.locator(
-                    "span:has(i.tdsi-images-fill):has-text('Gửi ảnh phiếu bán hàng')"
+                # Step 2: Click "Gửi ảnh phiếu bán hàng" from popover
+                popover = self.page.locator("div.tds-popover-content")
+                send_bill_img_btn = popover.locator(
+                    "span:has(i.tdsi-images-fill)"
                 ).first
                 if send_bill_img_btn.count() == 0:
                     # Fallback: text-based match
@@ -1017,16 +1070,32 @@ class OrderPage:
                     raise RuntimeError("'Gửi ảnh phiếu bán hàng' not found")
                 send_bill_img_btn.click(timeout=self._cfg.click_timeout)
 
-                # Wait for the bill list modal to disappear (returns to message panel)
+                # Wait for the bill list modal to disappear (up to 5s)
+                modal = self.page.locator("app-modal-list-bill")
                 try:
-                    self.page.wait_for_selector(
-                        "app-modal-list-bill", state="hidden", timeout=self._cfg.spinner_hide_ms
-                    )
+                    modal.wait_for(state="hidden", timeout=modal_timeout_ms)
                 except Exception:
-                    pass  # modal may already be gone
-                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                    # Modal still visible — check if it's really there
+                    if modal.count() > 0 and modal.is_visible():
+                        if attempt < max_retries:
+                            _log(
+                                f"  [!] BILL IMG: modal still visible after {modal_timeout_ms}ms"
+                                f" for {order_code} (attempt {attempt + 1}) — retrying..."
+                            )
+                            self.page.wait_for_timeout(retry_delay_ms)
+                            continue
+                        else:
+                            _log(
+                                f"  [!] BILL IMG: modal still visible after"
+                                f" {max_retries + 1} attempt(s) for {order_code}"
+                                f" — pressing Escape to close modal"
+                            )
+                            self.page.keyboard.press("Escape")
+                            self.page.wait_for_timeout(500)
+                            return False
 
-                # Send the message with bill image
+                # Modal gone — wait for bill image to load then send
+                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
                 self._click_send_button_reliable(order_code)
                 self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
@@ -1037,14 +1106,8 @@ class OrderPage:
                 if attempt < max_retries:
                     _log(
                         f"  [!] BILL IMG: attempt {attempt + 1} failed for {order_code}: {exc}"
-                        f" — reloading and retrying..."
+                        f" — retrying..."
                     )
-                    try:
-                        reload_btn = self.page.locator("i.tdsi-sync-fill").first
-                        if reload_btn.count() > 0:
-                            reload_btn.click(timeout=self._cfg.click_timeout)
-                    except Exception:
-                        pass
                     self.page.wait_for_timeout(retry_delay_ms)
                 else:
                     _log(
@@ -1636,8 +1699,13 @@ class OrderPage:
                     row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
 
                     bill_created = False
-                    if resolved_tag == TAG_1 and self._cfg.enable_create_bill:
-                        bill_created = self._create_order_bill(order_code)
+                    if resolved_tag == TAG_1:
+                        if self._cfg.enable_create_bill:
+                            bill_created = self._create_order_bill(order_code)
+                        elif self._cfg.enable_send_bill_image:
+                            # Skip create but allow send (test mode: assume bill already exists)
+                            bill_created = True
+                            _log(f"  BILL: create skipped, send enabled — assuming bill exists")
 
                     self._close_edit_modal_safely()
                     self._dismiss_notifications()
@@ -1954,8 +2022,13 @@ class OrderPage:
 
                     # TAG 1: create sales bill (phiếu bán hàng) while modal is open
                     bill_created = False
-                    if resolved_tag == TAG_1 and self._cfg.enable_create_bill:
-                        bill_created = self._create_order_bill(order_code)
+                    if resolved_tag == TAG_1:
+                        if self._cfg.enable_create_bill:
+                            bill_created = self._create_order_bill(order_code)
+                        elif self._cfg.enable_send_bill_image:
+                            # Skip create but allow send (test mode: assume bill already exists)
+                            bill_created = True
+                            _log(f"  BILL: create skipped, send enabled — assuming bill exists")
 
                     self._close_edit_modal_safely()
                     self._dismiss_notifications()
@@ -2140,12 +2213,22 @@ class OrderPage:
             add_tag_button = order_cell.locator(
                 "button[tds-tooltip='Thêm nhãn'], button:has(i.tdsi-price-tag-fill)"
             ).first
+            # Scroll the button into view before clicking so it is inside the viewport
+            try:
+                add_tag_button.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+            except Exception:
+                pass
             add_tag_button.click(timeout=self._cfg.click_timeout)
 
             tag_input = self._first([
                 ".tds-select-input input.tds-select-search-input:visible",
                 "tds-select-search input.tds-select-search-input:visible",
             ])
+            # Use JS focus+click to avoid viewport boundary issues
+            try:
+                tag_input.evaluate("el => { el.scrollIntoView({block: 'center'}); el.focus(); }")
+            except Exception:
+                pass
             tag_input.click(timeout=self._cfg.click_timeout)
             tag_input.fill("")
 
@@ -2313,6 +2396,7 @@ class OrderPage:
             return False
 
         _log(f"CSV collect: switching page {current_page} -> {current_page + 1}")
+        self._dismiss_notifications()
         next_btn.click(timeout=self._cfg.click_slow_timeout)
 
         for attempt in range(1, 13):
@@ -2363,6 +2447,7 @@ class OrderPage:
         search_input = self.campaign_search_input()
         search_input.fill(campaign_date_text)
         # Wait for dropdown results to load before confirming selection
+        self.page.wait_for_timeout(self._cfg.filter_search_settle_ms)
         self.page.wait_for_timeout(self._cfg.filter_search_ms)
         search_input.press("Enter")
 
