@@ -13,6 +13,7 @@ from app.cli_helpers import (
     FEATURE_CONFIRM_ORDER,
     prompt_campaign_label,
     prompt_price_code_mapping,
+    prompt_tag_1_2_only,
     prompt_feature_run,
 )
 from app.cli_menu import show_banner, show_summary
@@ -55,8 +56,10 @@ def main():
 
     csv_output_path: Path | None = None
     price_code_mapping: dict[str, int | None] = {}
+    tag_1_2_only = False
 
     if feature_run == FEATURE_CONFIRM_ORDER:
+        tag_1_2_only = prompt_tag_1_2_only()
         price_code_mapping = prompt_price_code_mapping()
 
     try:
@@ -75,13 +78,14 @@ def main():
         ("Campaign", campaign_label),
     ]
     if feature_run == FEATURE_CONFIRM_ORDER:
+        summary_items.append(("Only TAG 1&2", "Có" if tag_1_2_only else "Không"))
         summary_items.append(("Price Codes", price_map_text))
     show_summary(summary_items)
 
     log_console("=" * 80)
     log_console(
         f"[CLI] Selected options | feature={feature_run} | campaign='{campaign_label}' "
-        f"| price_codes={price_map_text}"
+        f"| only_tag_1_2={'yes' if tag_1_2_only else 'no'} | price_codes={price_map_text}"
     )
     log_console("[START] Begin automation process")
 
@@ -147,6 +151,7 @@ def main():
                     data_dir=DATA_DIR,
                     bot_config=bot_config,
                     price_code_mapping=price_code_mapping,
+                    tag_1_2_only=tag_1_2_only,
                 )
 
             if interrupted:
