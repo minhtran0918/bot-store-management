@@ -6,7 +6,7 @@ from pathlib import Path
 from app.cli_menu import select, text_input, show_summary
 
 FEATURE_CONFIRM_ORDER = "confirm_order"
-TOTAL_STEPS = 3
+TOTAL_STEPS = 4
 
 
 def prompt_feature_run() -> str:
@@ -82,16 +82,24 @@ def prompt_campaign_label() -> str:
     return yesterday_label
 
 
+def prompt_tag_1_2_only() -> bool:
+    choices = [
+        {"name": "Không            — xử lý theo tất cả tag", "value": "no"},
+        {"name": "Có               — chỉ xử lý TAG 1 và TAG 2", "value": "yes"},
+    ]
+    return select("Chỉ chạy TAG 1 & TAG 2", choices, step=3, total=TOTAL_STEPS, default="no") == "yes"
+
+
 MAX_A_CODES = 9  # A1..A9
 
 
 def prompt_price_code_mapping() -> dict[str, int | None]:
-    """Step 3/3: prompt user to input price values for A-codes.
+    """Step 4/4: prompt user to input price values for A-codes.
 
     First asks how many A-codes are active today (default 0 = none).
     Then prompts price for each A1..An.
     """
-    raw_count = text_input("Number of A-codes today (0-9, enter=0)", step=3, total=TOTAL_STEPS)
+    raw_count = text_input("Number of A-codes today (0-9, enter=0)", step=4, total=TOTAL_STEPS)
     try:
         num_codes = max(0, min(MAX_A_CODES, int(raw_count)))
     except (TypeError, ValueError):
@@ -100,7 +108,7 @@ def prompt_price_code_mapping() -> dict[str, int | None]:
     mapping: dict[str, int | None] = {}
     for i in range(1, num_codes + 1):
         key = f"A{i}"
-        raw = text_input(f"{key} price", step=3, total=TOTAL_STEPS)
+        raw = text_input(f"{key} price", step=4, total=TOTAL_STEPS)
         if raw:
             try:
                 mapping[key] = int(raw)
