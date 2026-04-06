@@ -80,6 +80,11 @@ def _build_match_label(matched_count: int, total_products: int, resolved_tag: st
         return f"FULL 4+ ({matched_count}/{total_products})"
     return f"FULL 1-3 ({matched_count}/{total_products})"
 
+
+def _should_skip_for_tag_1_2_only(tag_1_2_only: bool, resolved_tag: str) -> bool:
+    """When enabled, only TAG 1 and TAG 2 are actionable."""
+    return tag_1_2_only and resolved_tag not in (TAG_1, TAG_2)
+
 class OrderPage:
     def __init__(self, page: Page, bot_config: BotConfig | None = None):
         self.page = page
@@ -1448,6 +1453,7 @@ class OrderPage:
         data_dir: Path | None = None,
         campaign_label: str = "",
         price_code_mapping: dict[str, int | None] | None = None,
+        tag_1_2_only: bool = False,
     ) -> tuple[int, int, int]:
         """Single-pass: read each row, enrich immediately, write to CSV.
 
@@ -1466,6 +1472,8 @@ class OrderPage:
 
         whitelist = set(self._cfg.test_order_ids)
         _log(f"SINGLE-PASS started: rows={count} on page={page_index}")
+        if tag_1_2_only:
+            _log("TAG FILTER mode: only TAG 1 & TAG 2 will run actions")
         if whitelist:
             _log(f"WHITELIST mode: only processing {len(whitelist)} order(s): {', '.join(whitelist)}")
         if expected_total is not None:
@@ -1556,12 +1564,17 @@ class OrderPage:
                         "Comment": "",
                     }
                     _log(f"---- ORDER = {order_code}  ({processed})  {customer_name}  customer not 'Bình thường' -> TAG 0 ----")
-                    if not self._apply_processed_tag_to_order(order_code, TAG_0):
-                        row_data_t0["Tag"] = ERR
-                        error_count += 1
-                        _log(f"  [!] TAG 0 FAILED")
+                    if _should_skip_for_tag_1_2_only(tag_1_2_only, TAG_0):
+                        row_data_t0["Decision"] = "skip_tag_1_2_only"
+                        row_data_t0["Note"] = "resolved_tag=0 skipped_by_cli"
+                        _log("  SKIP ALL ACTIONS: only TAG 1 & TAG 2 mode")
                     else:
-                        _log(f"  TAG -> 0")
+                        if not self._apply_processed_tag_to_order(order_code, TAG_0):
+                            row_data_t0["Tag"] = ERR
+                            error_count += 1
+                            _log(f"  [!] TAG 0 FAILED")
+                        else:
+                            _log(f"  TAG -> 0")
                     tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
                     csv_writer.write_row(row_data_t0)
                     _log(f"  CSV +1: total={csv_writer.count}")
@@ -1609,7 +1622,11 @@ class OrderPage:
                         row_data["Decision"] = "skip_not_binh_thuong"
                         self._close_edit_modal_safely()
                         self._dismiss_notifications()
-                        if TAG_0 != old_tag:
+                        if _should_skip_for_tag_1_2_only(tag_1_2_only, TAG_0):
+                            row_data["Decision"] = "skip_tag_1_2_only"
+                            row_data["Note"] = f"resolved_tag=0 customer_tag={modal_customer_tag} (modal)"
+                            _log("  SKIP ALL ACTIONS: only TAG 1 & TAG 2 mode")
+                        elif TAG_0 != old_tag:
                             if not self._apply_processed_tag_to_order(order_code, TAG_0):
                                 row_data["Tag"] = ERR
                                 error_count += 1
@@ -1639,7 +1656,11 @@ class OrderPage:
                         row_data["Decision"] = "skip_low_rate"
                         self._close_edit_modal_safely()
                         self._dismiss_notifications()
-                        if TAG_0 != old_tag:
+                        if _should_skip_for_tag_1_2_only(tag_1_2_only, TAG_0):
+                            row_data["Decision"] = "skip_tag_1_2_only"
+                            row_data["Note"] = f"resolved_tag=0 low_rate={rate_text}" if rate_text else "resolved_tag=0 low_rate"
+                            _log("  SKIP ALL ACTIONS: only TAG 1 & TAG 2 mode")
+                        elif TAG_0 != old_tag:
                             if not self._apply_processed_tag_to_order(order_code, TAG_0):
                                 row_data["Tag"] = ERR
                                 error_count += 1
@@ -1674,6 +1695,28 @@ class OrderPage:
                     match_label = _build_match_label(matched_count, total_products, resolved_tag)
                     _log(f"  CHECK PRODUCT -> {match_label}")
 
+                    row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
+                    row_data["Match_Product"] = match_label
+                    row_data["Tag"] = resolved_tag
+                    row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
+
+                    if _should_skip_for_tag_1_2_only(tag_1_2_only, resolved_tag):
+                        row_data["Decision"] = "skip_tag_1_2_only"
+                        row_data["Note"] = f"resolved_tag={resolved_tag} skipped_by_cli"
+                        _log(f"  SKIP ALL ACTIONS: resolved_tag={resolved_tag} (only TAG 1 & TAG 2 mode)")
+                        self._close_edit_modal_safely()
+                        self._dismiss_notifications()
+                        tag_counts[resolved_tag] = tag_counts.get(resolved_tag, 0) + 1
+                        order_elapsed = time.time() - order_start
+                        _log(f"  DONE ORDER = {order_code} | STT = {processed} | TAG = {resolved_tag} | NAME = {customer_name} | TIME = {order_elapsed:.1f}s")
+                        csv_writer.write_row(row_data)
+                        _log(f"  CSV +1: total={csv_writer.count}")
+                        rows = self.filtered_order_rows()
+                        count = rows.count()
+                        if i >= count:
+                            break
+                        continue
+
                     # Save images for actionable tags (not tag-only 1.3)
                     # OOS tags (1.4/2.4): send only in-stock product images
                     # Mismatch tags (1.2/2.2): send only in-stock product images (skip OOS)
@@ -1693,10 +1736,6 @@ class OrderPage:
                             if self._cfg.enable_send_product_image:
                                 saved_images = self.save_product_images(order_code, data_dir, note_prices)
 
-                    row_data["Address_Status"] = "VALID" if have_address else "EMPTY"
-                    row_data["Match_Product"] = match_label
-                    row_data["Tag"] = resolved_tag
-                    row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
 
                     bill_created = False
                     if resolved_tag == TAG_1:
@@ -2428,7 +2467,9 @@ class OrderPage:
         except Exception:
             pass
         _log("[FILTER] Open filter panel")
-        self.filter_button().click(timeout=self._cfg.click_slow_timeout)
+        filter_btn = self.filter_button()
+        filter_btn.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+        filter_btn.click(timeout=self._cfg.click_slow_timeout)
         # Wait for the filter panel to finish opening before interacting with it
         try:
             self.page.wait_for_selector(
@@ -2439,7 +2480,9 @@ class OrderPage:
         except Exception:
             self.page.wait_for_timeout(self._cfg.panel_open_ms)
         _log("[FILTER] Focus campaign select")
-        self.campaign_select().click(timeout=self._cfg.click_slow_timeout)
+        campaign_sel = self.campaign_select()
+        campaign_sel.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+        campaign_sel.click(timeout=self._cfg.click_slow_timeout)
 
         # UI is more stable when searching by raw date then pressing Enter.
         campaign_date_text = campaign_label.replace("LIVE", "", 1).strip() if campaign_label.lower().startswith("live") else campaign_label
