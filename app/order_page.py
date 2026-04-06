@@ -2467,7 +2467,9 @@ class OrderPage:
         except Exception:
             pass
         _log("[FILTER] Open filter panel")
-        self.filter_button().click(timeout=self._cfg.click_slow_timeout)
+        filter_btn = self.filter_button()
+        filter_btn.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+        filter_btn.click(timeout=self._cfg.click_slow_timeout)
         # Wait for the filter panel to finish opening before interacting with it
         try:
             self.page.wait_for_selector(
@@ -2478,7 +2480,9 @@ class OrderPage:
         except Exception:
             self.page.wait_for_timeout(self._cfg.panel_open_ms)
         _log("[FILTER] Focus campaign select")
-        self.campaign_select().click(timeout=self._cfg.click_slow_timeout)
+        campaign_sel = self.campaign_select()
+        campaign_sel.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+        campaign_sel.click(timeout=self._cfg.click_slow_timeout)
 
         # UI is more stable when searching by raw date then pressing Enter.
         campaign_date_text = campaign_label.replace("LIVE", "", 1).strip() if campaign_label.lower().startswith("live") else campaign_label
