@@ -27,28 +27,28 @@ timeouts:
   click: 2500            # General element click
   click_slow: 4000       # Slow elements: filter panel, Apply button
   modal: 5000            # Wait for order edit modal to appear
-  panel_open: 500        # After opening the message panel
+  panel_open: 300        # After opening the message panel
   text_fill: 300         # After filling a textarea
   image_attach: 500      # After file chooser sets image files
-  send_post_base: 1000            # Base wait AFTER clicking send
+  send_post_base: 700             # Base wait AFTER clicking send
   send_post_per_image: 200        # Per-image additional wait AFTER send
   overlay_dismiss: 200   # After closing a notification or overlay
   tag_update: 300        # After a tag is applied
   pagination: 350        # After navigating to next page
   filter_search: 400     # After typing in campaign filter (wait for results)
-  filter_search_settle: 1000  # Extra wait after fill before pressing Enter (let dropdown settle)
+  filter_search_settle: 600   # Extra wait after fill before pressing Enter (let dropdown settle)
   filter_apply: 800      # After clicking Apply filter
-  escape_close: 500      # After pressing Escape to close a panel
+  escape_close: 300      # After pressing Escape to close a panel
   table_load: 4000       # Wait for order table rows to appear after navigation
   spinner_hide: 2500     # Wait for upload spinner to disappear
   error_recheck: 1500    # Wait before rechecking if send error is transient
-  comment_reply_post: 1500  # Wait after sending a comment reply
+  comment_reply_post: 1000  # Wait after sending a comment reply
   notification_click: 500   # Click timeout for notification close buttons
   inner_text_read: 1500  # Timeout for reading element inner text
   tag_clear: 150         # Wait after clearing tags via JS
   tag_backspace: 100     # Wait after backspace clearing tags
-  bill_create_step: 1000 # Wait between steps when creating sales bill (Lưu nháp)
-  bill_image_load: 1500  # Wait for bill image to load into message box
+  bill_create_step: 600  # Wait between steps when creating sales bill (Lưu nháp)
+  bill_image_load: 1000  # Wait for bill image to load into message box
   bill_reload_retry_delay: 2000 # Wait after clicking reload before retrying bill image send
 
 # ─── Business messages ───────────────────────────────────────────────────────
