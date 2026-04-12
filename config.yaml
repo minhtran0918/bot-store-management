@@ -7,7 +7,7 @@ bot:
   test_max_collect_records: null   # Limit rows per run (for testing). Set to null for full run.
   max_images_per_send: 3        # Max images per message send (larger sets are split into batches).
   test_order_ids: []            # Only process these order codes (empty = process all). E.g. ["ORD001", "ORD002"]
-  reload_every_n_orders: 4      # Reload page every N processed orders to free memory. Set to 0 to disable.
+  reload_every_n_orders: 6      # Reload page every N processed orders to free memory. Set to 0 to disable.
   low_delivery_rate_pct: 60     # Delivery success rate threshold (%). Below this → TAG 0 (skip). 0/0 = OK.
   comment_reply_max_retries: 2  # Retry comment reply this many times on failure (0 = no retry).
   bill_reload_retry_count: 2   # Retry sending bill image this many times after reload on failure (0 = no retry).
@@ -26,7 +26,7 @@ features:
 timeouts:
   click: 2500            # General element click
   click_slow: 4000       # Slow elements: filter panel, Apply button
-  modal: 5000            # Wait for order edit modal to appear
+  modal: 3000            # Wait for order edit modal to appear
   panel_open: 300        # After opening the message panel
   text_fill: 300         # After filling a textarea
   image_attach: 500      # After file chooser sets image files
@@ -39,7 +39,7 @@ timeouts:
   filter_search_settle: 600   # Extra wait after fill before pressing Enter (let dropdown settle)
   filter_apply: 800      # After clicking Apply filter
   escape_close: 300      # After pressing Escape to close a panel
-  table_load: 4000       # Wait for order table rows to appear after navigation
+  table_load: 3000       # Wait for order table rows to appear after navigation
   spinner_hide: 2500     # Wait for upload spinner to disappear
   error_recheck: 1500    # Wait before rechecking if send error is transient
   comment_reply_post: 1000  # Wait after sending a comment reply
