@@ -90,19 +90,113 @@ class OrderPage:
         self.page = page
         self._cfg = bot_config or BotConfig({})
 
+    def _page_is_closed(self) -> bool:
+        try:
+            return self.page.is_closed()
+        except Exception:
+            return True
+
     def _first(self, selectors: list[str]) -> Locator:
         for selector in selectors:
             locator = self.page.locator(selector).first
-            if locator.count() > 0:
-                return locator
+            try:
+                if locator.count() > 0:
+                    return locator
+            except Exception:
+                continue
         return self.page.locator(selectors[-1]).first
 
     def _all(self, selectors: list[str]) -> Locator:
         for selector in selectors:
             locator = self.page.locator(selector)
-            if locator.count() > 0:
-                return locator
+            try:
+                if locator.count() > 0:
+                    return locator
+            except Exception:
+                continue
         return self.page.locator(selectors[-1])
+
+    def _has_visible_selector(self, selector: str) -> bool:
+        if self._page_is_closed():
+            return False
+        try:
+            locator = self.page.locator(selector).first
+            return locator.count() > 0 and locator.is_visible()
+        except Exception:
+            return False
+
+    def _blocking_overlay_selectors(self) -> tuple[str, ...]:
+        return (
+            "div.chat-body",
+            "div.cdk-overlay-backdrop",
+            "div.tds-drawer-mask",
+            "app-modal-list-bill",
+            "div.cdk-overlay-container .comment-count",
+            "div.cdk-overlay-container div.w-full.text-left",
+            "div.cdk-overlay-container div.flex.flex-row.justify-between.items-center.bg-white.w-full.p-2",
+        )
+
+    def _wait_for_blocking_overlays_hidden(self, timeout_ms: int | None = None) -> bool:
+        if self._page_is_closed():
+            return True
+        wait_ms = max(self._cfg.overlay_dismiss_ms * 4, 800) if timeout_ms is None else max(0, int(timeout_ms))
+        deadline = time.time() + (wait_ms / 1000.0)
+        while True:
+            if not any(self._has_visible_selector(selector) for selector in self._blocking_overlay_selectors()):
+                return True
+            if time.time() >= deadline:
+                return False
+            self.page.wait_for_timeout(100)
+
+    def _click_locator_resilient(
+        self,
+        locator: Locator,
+        description: str,
+        *,
+        timeout: int | None = None,
+    ) -> None:
+        if self._page_is_closed():
+            raise RuntimeError(f"Cannot {description}: page is already closed")
+
+        click_timeout = self._cfg.click_timeout if timeout is None else max(0, int(timeout))
+        last_exc: Exception | None = None
+        attempts = (
+            ("normal", False, False),
+            ("force", True, False),
+            ("dispatch", True, True),
+        )
+
+        for attempt_name, force_click, use_dispatch in attempts:
+            try:
+                self._dismiss_notifications()
+                self._wait_for_blocking_overlays_hidden(timeout_ms=max(self._cfg.overlay_dismiss_ms * 2, 500))
+                try:
+                    locator.scroll_into_view_if_needed(timeout=click_timeout)
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(100)
+                if use_dispatch:
+                    locator.dispatch_event("click")
+                else:
+                    locator.click(
+                        timeout=click_timeout,
+                        force=force_click,
+                        no_wait_after=True,
+                    )
+                return
+            except Exception as exc:
+                last_exc = exc
+                if self._page_is_closed():
+                    raise
+                _log(f"  [!] {description}: {attempt_name} click failed: {exc}")
+                try:
+                    self.page.keyboard.press("Escape")
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(self._cfg.overlay_dismiss_ms)
+
+        if last_exc is not None:
+            raise last_exc
 
     def all_rows(self) -> Locator:
         return self._all([
@@ -461,7 +555,7 @@ class OrderPage:
     ) -> bool:
         try:
             self._dismiss_notifications()
-            self.message_button_in_row(row).click(timeout=self._cfg.click_timeout, force=True)
+            self.open_message_panel_by_row(row)
             self._wait_panel_ready()
             self._send_batched_in_open_panel(message, image_paths or [], order_code)
             self.page.keyboard.press("Escape")
@@ -470,13 +564,14 @@ class OrderPage:
         except Exception as exc:
             _log(f"  [!] Send message failed: {exc}")
             _log(f"  [!] Stack trace:\n{traceback.format_exc()}")
+            self._close_message_panel_safely()
             return False
 
     def reply_comment_to_order(self, row: Locator, order_code: str, campaign_label: str = "") -> bool:
         """Open message panel, reply to first comment of campaign-date post, close panel."""
         try:
             self._dismiss_notifications()
-            self.message_button_in_row(row).click(timeout=self._cfg.click_timeout)
+            self.open_message_panel_by_row(row)
             try:
                 self.page.wait_for_selector(
                     "textarea[data-placeholder*='Nhập nội dung tin nhắn'], "
@@ -499,10 +594,7 @@ class OrderPage:
             return ok
         except Exception as exc:
             _log(f"  [!] Comment reply error: {exc}")
-            try:
-                self.page.keyboard.press("Escape")
-            except Exception:
-                pass
+            self._close_message_panel_safely()
             return False
 
     def confirmation_image_button(self) -> Locator:
@@ -2042,9 +2134,7 @@ class OrderPage:
                         msg_row = self.row_by_code(order_code)
 
                         if msg_row.count() > 0:
-                            self.message_button_in_row(msg_row).click(
-                                timeout=self._cfg.click_timeout, force=True
-                            )
+                            self.open_message_panel_by_row(msg_row)
                             self._wait_panel_ready()
 
                             partner_name = self._read_partner_name()
@@ -2124,6 +2214,7 @@ class OrderPage:
                     _log(f"  [!] FAILED: {exc}")
                     _log(f"  [!] Stack trace:\n{traceback.format_exc()}")
                 finally:
+                    self._close_message_panel_safely()
                     self._close_edit_modal_safely()
 
                 # Write row to CSV immediately
@@ -2373,9 +2464,7 @@ class OrderPage:
                         msg_row = self.row_by_code(order_code)
 
                         if msg_row.count() > 0:
-                            self.message_button_in_row(msg_row).click(
-                                timeout=self._cfg.click_timeout, force=True
-                            )
+                            self.open_message_panel_by_row(msg_row)
                             self._wait_panel_ready()
 
                             partner_name = self._read_partner_name()
@@ -2459,6 +2548,7 @@ class OrderPage:
                     _log(f"  [!] FAILED: {exc}")
                     _log(f"  [!] Stack trace:\n{traceback.format_exc()}")
                 finally:
+                    self._close_message_panel_safely()
                     self._close_edit_modal_safely()
 
             # All qualifying orders processed? Stop early
@@ -2880,3 +2970,206 @@ class OrderPage:
 
         _log(f"[CONFIRM] Order not found after pagination scan | order={order_code} | last_page={page_index}")
         return None, page_index
+
+    def open_edit_modal_by_row(self, row: Locator) -> None:
+        self._click_locator_resilient(
+            row.locator(
+                "button[tds-tooltip='Chá»‰nh sá»­a'], button:has(i.tdsi-edit-fill), button[title='Sá»­a'], [aria-label='Sá»­a']"
+            ).first,
+            "open edit modal",
+        )
+
+    def open_message_panel_by_row(self, row: Locator) -> None:
+        self._click_locator_resilient(
+            self.message_button_in_row(row),
+            "open message panel",
+        )
+
+    def _message_panel_open_selectors(self) -> tuple[str, ...]:
+        return (
+            "div.chat-body",
+            "div.cdk-overlay-container div.flex.flex-row.justify-between.items-center.bg-white.w-full.p-2",
+            "div.cdk-overlay-container .comment-count",
+            "div.cdk-overlay-container textarea",
+        )
+
+    def _message_panel_is_open(self) -> bool:
+        if self._page_is_closed():
+            return False
+        return any(
+            self._has_visible_selector(selector)
+            for selector in self._message_panel_open_selectors()
+        )
+
+    def _blur_active_element(self) -> None:
+        if self._page_is_closed():
+            return
+        try:
+            self.page.evaluate(
+                """() => {
+                    const el = document.activeElement;
+                    if (el && typeof el.blur === 'function') el.blur();
+                }"""
+            )
+        except Exception:
+            pass
+
+    def _try_click_message_panel_close_button(self) -> bool:
+        if self._page_is_closed():
+            return False
+        close_selectors = (
+            "div.cdk-overlay-container button.tds-button-close",
+            "div.cdk-overlay-container button[aria-label='Close']",
+            "div.cdk-overlay-container button[title='Close']",
+            "div.cdk-overlay-container button:has(i.tdsi-close-fill)",
+            "div.cdk-overlay-container button:has(i.tdsi-close-line)",
+            "div.cdk-overlay-container button:has(i.tdsi-times-fill)",
+            "div.cdk-overlay-container button:has(i.tdsi-times-line)",
+            "div.cdk-overlay-container button:has(i.tdsi-arrow-right-fill)",
+            "div.cdk-overlay-container button:has(i.tdsi-arrow-left-fill)",
+            "div.cdk-overlay-container [role='button']:has-text('×')",
+        )
+        for selector in close_selectors:
+            try:
+                btn = self.page.locator(selector).first
+                if btn.count() == 0 or not btn.is_visible():
+                    continue
+                btn.click(timeout=self._cfg.click_timeout, force=True, no_wait_after=True)
+                self.page.wait_for_timeout(250)
+                return True
+            except Exception:
+                continue
+        return False
+
+    def _close_message_panel_safely(self) -> None:
+        if self._page_is_closed():
+            return
+        for _ in range(5):
+            if not self._message_panel_is_open():
+                return
+            self._blur_active_element()
+            if self._try_click_message_panel_close_button() and not self._message_panel_is_open():
+                return
+            try:
+                self.page.keyboard.press("Escape")
+            except Exception:
+                pass
+            self.page.wait_for_timeout(max(200, min(self._cfg.escape_close_ms, 600)))
+        if self._message_panel_is_open():
+            _log("  [!] Message panel still visible after close attempts")
+
+    def _wait_panel_ready(self) -> None:
+        """Wait for message panel to finish loading (spinner gone), then focus textarea."""
+        if self._page_is_closed():
+            return
+        try:
+            self.page.wait_for_selector(
+                "textarea[data-placeholder*='Nháº­p ná»™i dung tin nháº¯n'], "
+                "textarea[placeholder*='Nháº­p ná»™i dung tin nháº¯n'], "
+                "textarea[placeholder*='Tin nháº¯n']",
+                state="visible",
+                timeout=self._cfg.spinner_hide_ms,
+            )
+        except Exception:
+            self.page.wait_for_timeout(self._cfg.panel_open_ms)
+        try:
+            self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
+        except Exception:
+            pass
+        self.message_box().click(timeout=self._cfg.click_timeout)
+
+    def _wait_panel_closed(self) -> None:
+        """Wait for message panel and related overlays to fully close after pressing Escape."""
+        if self._page_is_closed():
+            return
+        self._close_message_panel_safely()
+        deadline = time.time() + (max(self._cfg.escape_close_ms * 5, 1200) / 1000.0)
+        while self._message_panel_is_open() and time.time() < deadline:
+            self._close_message_panel_safely()
+            self.page.wait_for_timeout(150)
+        self._wait_for_overlay_masks_hidden(timeout_ms=max(self._cfg.escape_close_ms * 3, 800))
+        self._wait_for_blocking_overlays_hidden(timeout_ms=max(self._cfg.escape_close_ms * 3, 800))
+
+    def _dismiss_notifications(self) -> None:
+        """Close notifications and leftover overlays that can intercept clicks."""
+        if self._page_is_closed():
+            return
+        try:
+            if self._message_panel_is_open():
+                self._close_message_panel_safely()
+            for _ in range(4):
+                has_overlay = any(
+                    self._has_visible_selector(sel)
+                    for sel in self._blocking_overlay_selectors()
+                )
+                if not has_overlay:
+                    break
+                self.page.keyboard.press("Escape")
+                self.page.wait_for_timeout(self._cfg.overlay_dismiss_ms)
+            self._wait_for_blocking_overlays_hidden(timeout_ms=max(self._cfg.overlay_dismiss_ms * 2, 500))
+        except Exception:
+            pass
+        try:
+            close_buttons = self.page.locator(
+                "tds-notification button.tds-button-close, "
+                "tds-notification .tds-notification-notice-close button"
+            )
+            count = close_buttons.count()
+            for i in range(count):
+                try:
+                    close_buttons.nth(i).click(timeout=self._cfg.notification_click_ms, force=True)
+                except Exception:
+                    pass
+            if count > 0:
+                self.page.wait_for_timeout(self._cfg.overlay_dismiss_ms)
+        except Exception:
+            pass
+
+    def _close_edit_modal_safely(self) -> None:
+        if self._page_is_closed():
+            return
+        try:
+            for _ in range(4):
+                has_overlay = any(
+                    self._has_visible_selector(sel)
+                    for sel in (*self._blocking_overlay_selectors(), "tds-modal-container")
+                )
+                if not has_overlay:
+                    break
+                self.page.keyboard.press("Escape")
+                self.page.wait_for_timeout(300)
+        except Exception:
+            pass
+        if self._page_is_closed():
+            return
+        modal = self.modal()
+        try:
+            if modal.count() == 0 or not modal.is_visible():
+                return
+        except Exception:
+            return
+        try:
+            close_btn = self.close_button()
+            if close_btn.count() > 0 and close_btn.is_visible():
+                close_btn.click(timeout=self._cfg.click_timeout, no_wait_after=True)
+            else:
+                self.page.keyboard.press("Escape")
+            try:
+                modal.wait_for(
+                    state="hidden",
+                    timeout=max(self._cfg.escape_close_ms * 2, 500),
+                )
+            except Exception:
+                pass
+        except Exception:
+            try:
+                self.page.keyboard.press("Escape")
+                try:
+                    modal.wait_for(
+                        state="hidden",
+                        timeout=max(self._cfg.escape_close_ms * 2, 500),
+                    )
+                except Exception:
+                    pass
+            except Exception:
+                pass
