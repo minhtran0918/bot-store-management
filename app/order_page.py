@@ -244,7 +244,8 @@ class OrderPage:
             ])
             # Scroll into view in case the toolbar is off-screen due to window resize
             image_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
-            self.page.wait_for_timeout(200)
+            # Small delay before clicking image button to let panel fully settle
+            self.page.wait_for_timeout(1000)
             with self.page.expect_file_chooser() as fc_info:
                 image_btn.click(timeout=self._cfg.click_timeout)
             file_chooser = fc_info.value
@@ -259,32 +260,12 @@ class OrderPage:
 
     def _wait_panel_ready(self) -> None:
         """Wait for message panel to finish loading (spinner gone), then focus textarea."""
-        try:
-            self.page.wait_for_selector(
-                "textarea[data-placeholder*='Nhập nội dung tin nhắn'], "
-                "textarea[placeholder*='Nhập nội dung tin nhắn'], "
-                "textarea[placeholder*='Tin nhắn']",
-                state="visible",
-                timeout=self._cfg.spinner_hide_ms,
-            )
-        except Exception:
-            self.page.wait_for_timeout(self._cfg.panel_open_ms)
+        self.page.wait_for_timeout(self._cfg.panel_open_ms)
         try:
             self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
         except Exception:
             pass
         self.message_box().click(timeout=self._cfg.click_timeout)
-
-    def _wait_panel_closed(self) -> None:
-        """Wait for message panel to fully close after pressing Escape."""
-        try:
-            self.page.wait_for_selector(
-                "div.chat-body",
-                state="hidden",
-                timeout=self._cfg.escape_close_ms * 5,
-            )
-        except Exception:
-            self.page.wait_for_timeout(self._cfg.escape_close_ms)
 
     def _send_batched_in_open_panel(self, message: str, img_list: list[Path], order_code: str) -> None:
         """Send images + optional text in an already-open panel, handling batching."""
@@ -355,6 +336,7 @@ class OrderPage:
             msg_box = self.message_box()
             msg_box.click(timeout=self._cfg.click_timeout)
             msg_box.fill(message)
+            self.page.wait_for_timeout(self._cfg.text_fill_ms)
         if image_paths:
             self._attach_images_in_chat(image_paths, order_code)
             # Wait for the upload spinner to disappear before sending
@@ -400,7 +382,7 @@ class OrderPage:
             self._wait_panel_ready()
             self._send_batched_in_open_panel(message, image_paths or [], order_code)
             self.page.keyboard.press("Escape")
-            self._wait_panel_closed()
+            self.page.wait_for_timeout(self._cfg.escape_close_ms)
             return True
         except Exception as exc:
             _log(f"  [!] Send message failed: {exc}")
@@ -412,20 +394,13 @@ class OrderPage:
         try:
             self._dismiss_notifications()
             self.message_button_in_row(row).click(timeout=self._cfg.click_timeout)
-            try:
-                self.page.wait_for_selector(
-                    "textarea[data-placeholder*='Nhập nội dung tin nhắn'], "
-                    "textarea[placeholder*='Nhập nội dung tin nhắn']",
-                    state="visible", timeout=self._cfg.spinner_hide_ms,
-                )
-            except Exception:
-                self.page.wait_for_timeout(self._cfg.panel_open_ms)
+            self.page.wait_for_timeout(self._cfg.panel_open_ms)
 
             partner_name = self._read_partner_name()
             ok = self._reply_comment_fallback(partner_name, campaign_label=campaign_label)
 
             self.page.keyboard.press("Escape")
-            self._wait_panel_closed()
+            self.page.wait_for_timeout(self._cfg.escape_close_ms)
 
             if ok:
                 _log(f"  COMMENT REPLY OK: order={order_code}")
@@ -1004,6 +979,7 @@ class OrderPage:
                 _log(f"  [!] BILL: checkbox not found for {order_code}")
                 return False
             checkbox_label.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(step_ms)
 
             # Wait for "Lưu nháp" button to appear (shows ~1s after checkbox tick)
             btn_selector = "button.tds-button-primary:has-text('Lưu nháp')"
@@ -1023,11 +999,8 @@ class OrderPage:
                 save_draft_btn2.click(timeout=self._cfg.click_timeout)
                 self.page.wait_for_timeout(step_ms)
 
-            # After 2nd click, modal closes and page returns to order list — wait for dialog to hide
-            try:
-                self.page.wait_for_selector("div[role='dialog']", state="hidden", timeout=step_ms * 5)
-            except Exception:
-                self.page.wait_for_timeout(step_ms)
+            # After 2nd click, page returns to order list — wait for it to settle
+            self.page.wait_for_timeout(step_ms)
 
             # Verify status changed to "Đơn hàng" (visible on the order list row)
             status_tag = self.page.locator("tds-tag:has-text('Đơn hàng')").first
@@ -1062,13 +1035,7 @@ class OrderPage:
                 _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
                 return False
             bill_btn.click(timeout=self._cfg.click_timeout)
-            try:
-                self.page.wait_for_selector(
-                    "virtual-scroller .scrollable-content > div, div.flex.items-center.border-b",
-                    state="visible", timeout=self._cfg.click_slow_timeout,
-                )
-            except Exception:
-                self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+            self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
         except Exception as exc:
             _log(f"  [!] BILL IMG: failed to open bill tab for {order_code}: {exc}")
             return False
@@ -1094,13 +1061,7 @@ class OrderPage:
                     raise RuntimeError("three-dots button not found")
                 three_dots_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
                 three_dots_btn.click(timeout=self._cfg.click_timeout)
-                try:
-                    self.page.wait_for_selector(
-                        "div.tds-popover-content",
-                        state="visible", timeout=self._cfg.click_slow_timeout,
-                    )
-                except Exception:
-                    self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+                self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
 
                 # Step 2: Click "Gửi ảnh phiếu bán hàng" from popover
                 popover = self.page.locator("div.tds-popover-content")
@@ -1138,18 +1099,10 @@ class OrderPage:
                             self.page.wait_for_timeout(500)
                             return False
 
-                # Modal gone — wait for bill image to attach in panel then send
-                try:
-                    self.page.wait_for_selector(
-                        "span:has-text('/30')", state="visible", timeout=self._cfg.bill_image_load_ms * 3,
-                    )
-                except Exception:
-                    self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                # Modal gone — wait for bill image to load then send
+                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
                 self._click_send_button_reliable(order_code)
-                try:
-                    self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
-                except Exception:
-                    self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
                 _log(f"  BILL IMG: sent for {order_code}")
                 return True
@@ -1281,35 +1234,6 @@ class OrderPage:
             # If the textarea detached or can no longer be read, the reply box likely closed after send.
             return True
 
-    def _comment_reply_success_toast_visible(self) -> bool:
-        """Detect the FB success toast shown after replying to a comment."""
-        success_text = "Tr\u1ea3 l\u1eddi b\u00ecnh lu\u1eadn th\u00e0nh c\u00f4ng"
-        toast_locators = [
-            self.page.locator("tds-notification").filter(has_text=success_text).first,
-            self.page.locator("[role='alert'], [aria-live='assertive'], [aria-live='polite']").filter(has_text=success_text).first,
-            self.page.locator(f"text={success_text}").first,
-        ]
-        for toast in toast_locators:
-            try:
-                if toast.count() > 0 and toast.is_visible():
-                    return True
-            except Exception:
-                continue
-        return False
-
-    def _wait_for_reply_submit_succeeded(self, reply_textarea: Locator, timeout_ms: int | None = None) -> bool:
-        """Wait briefly for a comment reply confirmation signal after submit."""
-        wait_ms = self._cfg.comment_reply_post_ms if timeout_ms is None else max(0, int(timeout_ms))
-        deadline = time.time() + (wait_ms / 1000.0)
-        while True:
-            if self._comment_reply_success_toast_visible():
-                return True
-            if self._reply_submit_succeeded(reply_textarea):
-                return True
-            if time.time() >= deadline:
-                return False
-            self.page.wait_for_timeout(100)
-
     def _reply_comment_fallback(self, partner_name: str, campaign_label: str = "", templates: list | None = None) -> bool:
         """Reply to the first comment of the FB post matching campaign_label date (latest time on that day)."""
         try:
@@ -1420,16 +1344,13 @@ class OrderPage:
                 return False
 
             reply_btn.click(timeout=self._cfg.click_timeout)
+            self.page.wait_for_timeout(self._cfg.escape_close_ms)
 
             # Type message into reply textarea
             reply_textarea = self.page.locator(
                 "textarea#inputReply:visible, "
                 "textarea[placeholder*='Nhập nội dung trả lời']:visible"
             ).first
-            try:
-                reply_textarea.wait_for(state="visible", timeout=self._cfg.click_slow_timeout)
-            except Exception:
-                self.page.wait_for_timeout(self._cfg.escape_close_ms)
             if reply_textarea.count() == 0:
                 _log("  [!] Reply textarea not found")
                 return False
@@ -1441,6 +1362,7 @@ class OrderPage:
 
             reply_textarea.click(timeout=self._cfg.click_timeout)
             reply_textarea.fill(fallback_msg)
+            self.page.wait_for_timeout(self._cfg.text_fill_ms)
 
             # Click the send button inside the reply composer, not the inbox send below.
             reply_submit = self._find_comment_reply_send_button(reply_textarea)
@@ -1454,22 +1376,18 @@ class OrderPage:
                         reply_submit.click(timeout=self._cfg.click_timeout, force=True)
                 except Exception as exc:
                     _log(f"  [!] Comment reply submit attempt {attempt}/3 error: {exc}")
-                if self._wait_for_reply_submit_succeeded(reply_textarea):
+                self.page.wait_for_timeout(self._cfg.panel_open_ms)
+                if self._reply_submit_succeeded(reply_textarea):
                     _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
                     return True
 
                 # Fallback: the reply button advertises Enter-to-send.
                 try:
-                    reply_textarea.press("Enter", timeout=min(self._cfg.click_timeout, 1500))
+                    reply_textarea.press("Enter")
                 except Exception as exc:
-                    if self._wait_for_reply_submit_succeeded(
-                        reply_textarea,
-                        timeout_ms=max(self._cfg.comment_reply_post_ms, self._cfg.panel_open_ms),
-                    ):
-                        _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
-                        return True
                     _log(f"  [!] Comment reply Enter fallback attempt {attempt}/3 error: {exc}")
-                if self._wait_for_reply_submit_succeeded(reply_textarea):
+                self.page.wait_for_timeout(self._cfg.panel_open_ms)
+                if self._reply_submit_succeeded(reply_textarea):
                     _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
                     return True
 
@@ -1907,13 +1825,10 @@ class OrderPage:
                             # BILL: send bill image after reply comment (TAG 1 only)
                             if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
                                 self._send_bill_image_in_panel(order_code)
-                                try:
-                                    self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
-                                except Exception:
-                                    self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
                             self.page.keyboard.press("Escape")
-                            self._wait_panel_closed()
+                            self.page.wait_for_timeout(self._cfg.escape_close_ms)
                         else:
                             _log(f"  [!] Row not found for sending: {order_code}")
 
@@ -2238,13 +2153,10 @@ class OrderPage:
                             # BILL: send bill image after reply comment (TAG 1 only)
                             if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
                                 self._send_bill_image_in_panel(order_code)
-                                try:
-                                    self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
-                                except Exception:
-                                    self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                                self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
 
                             self.page.keyboard.press("Escape")
-                            self._wait_panel_closed()
+                            self.page.wait_for_timeout(self._cfg.escape_close_ms)
                         else:
                             _log(f"  [!] Row not found for sending: {order_code}")
 
@@ -2578,14 +2490,8 @@ class OrderPage:
         search_input = self.campaign_search_input()
         search_input.fill(campaign_date_text)
         # Wait for dropdown results to load before confirming selection
-        try:
-            self.page.wait_for_selector(
-                "div[tds-dropdown-item], tds-option, .tds-select-item",
-                state="visible",
-                timeout=self._cfg.filter_search_settle_ms + self._cfg.filter_search_ms,
-            )
-        except Exception:
-            self.page.wait_for_timeout(self._cfg.filter_search_settle_ms)
+        self.page.wait_for_timeout(self._cfg.filter_search_settle_ms)
+        self.page.wait_for_timeout(self._cfg.filter_search_ms)
         search_input.press("Enter")
 
         _log("[FILTER] Apply filter")
