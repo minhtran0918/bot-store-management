@@ -1281,6 +1281,35 @@ class OrderPage:
             # If the textarea detached or can no longer be read, the reply box likely closed after send.
             return True
 
+    def _comment_reply_success_toast_visible(self) -> bool:
+        """Detect the FB success toast shown after replying to a comment."""
+        success_text = "Tr\u1ea3 l\u1eddi b\u00ecnh lu\u1eadn th\u00e0nh c\u00f4ng"
+        toast_locators = [
+            self.page.locator("tds-notification").filter(has_text=success_text).first,
+            self.page.locator("[role='alert'], [aria-live='assertive'], [aria-live='polite']").filter(has_text=success_text).first,
+            self.page.locator(f"text={success_text}").first,
+        ]
+        for toast in toast_locators:
+            try:
+                if toast.count() > 0 and toast.is_visible():
+                    return True
+            except Exception:
+                continue
+        return False
+
+    def _wait_for_reply_submit_succeeded(self, reply_textarea: Locator, timeout_ms: int | None = None) -> bool:
+        """Wait briefly for a comment reply confirmation signal after submit."""
+        wait_ms = self._cfg.comment_reply_post_ms if timeout_ms is None else max(0, int(timeout_ms))
+        deadline = time.time() + (wait_ms / 1000.0)
+        while True:
+            if self._comment_reply_success_toast_visible():
+                return True
+            if self._reply_submit_succeeded(reply_textarea):
+                return True
+            if time.time() >= deadline:
+                return False
+            self.page.wait_for_timeout(100)
+
     def _reply_comment_fallback(self, partner_name: str, campaign_label: str = "", templates: list | None = None) -> bool:
         """Reply to the first comment of the FB post matching campaign_label date (latest time on that day)."""
         try:
@@ -1425,18 +1454,22 @@ class OrderPage:
                         reply_submit.click(timeout=self._cfg.click_timeout, force=True)
                 except Exception as exc:
                     _log(f"  [!] Comment reply submit attempt {attempt}/3 error: {exc}")
-                self.page.wait_for_timeout(self._cfg.panel_open_ms)
-                if self._reply_submit_succeeded(reply_textarea):
+                if self._wait_for_reply_submit_succeeded(reply_textarea):
                     _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
                     return True
 
                 # Fallback: the reply button advertises Enter-to-send.
                 try:
-                    reply_textarea.press("Enter")
+                    reply_textarea.press("Enter", timeout=min(self._cfg.click_timeout, 1500))
                 except Exception as exc:
+                    if self._wait_for_reply_submit_succeeded(
+                        reply_textarea,
+                        timeout_ms=max(self._cfg.comment_reply_post_ms, self._cfg.panel_open_ms),
+                    ):
+                        _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
+                        return True
                     _log(f"  [!] Comment reply Enter fallback attempt {attempt}/3 error: {exc}")
-                self.page.wait_for_timeout(self._cfg.panel_open_ms)
-                if self._reply_submit_succeeded(reply_textarea):
+                if self._wait_for_reply_submit_succeeded(reply_textarea):
                     _log(f"  COMMENT REPLY SENT: '{fallback_msg[:50]}...'")
                     return True
 
