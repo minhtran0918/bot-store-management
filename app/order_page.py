@@ -2869,7 +2869,10 @@ class OrderPage:
             pass
         _log("[FILTER] Open filter panel")
         filter_btn = self.filter_button()
-        filter_btn.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+        try:
+            filter_btn.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+        except Exception:
+            pass
         filter_btn.click(timeout=self._cfg.click_slow_timeout)
         # Wait for the filter panel to finish opening before interacting with it
         try:
@@ -2880,9 +2883,14 @@ class OrderPage:
             )
         except Exception:
             self.page.wait_for_timeout(self._cfg.panel_open_ms)
+        # Extra settle wait so the panel animation finishes before interacting
+        self.page.wait_for_timeout(self._cfg.overlay_dismiss_ms)
         _log("[FILTER] Focus campaign select")
         campaign_sel = self.campaign_select()
-        campaign_sel.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+        try:
+            campaign_sel.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+        except Exception:
+            pass
         campaign_sel.click(timeout=self._cfg.click_slow_timeout)
 
         # UI is more stable when searching by raw date then pressing Enter.
