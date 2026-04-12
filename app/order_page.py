@@ -175,6 +175,22 @@ class OrderPage:
             _log(f"  [!] Modal verify error: {exc}")
             return False
 
+    def _wait_for_order_status(self, order_code: str, status_text: str, timeout_ms: int | None = None) -> bool:
+        """Wait for a specific status tag to appear on the list row of one order."""
+        wait_ms = self._cfg.click_slow_timeout if timeout_ms is None else max(0, int(timeout_ms))
+        deadline = time.time() + (wait_ms / 1000.0)
+        status_locator = f"tds-tag:has-text('{status_text}')"
+        while True:
+            try:
+                row = self.row_by_code(order_code)
+                if row.count() > 0 and row.locator(status_locator).first.count() > 0:
+                    return True
+            except Exception:
+                pass
+            if time.time() >= deadline:
+                return False
+            self.page.wait_for_timeout(200)
+
     def address_input(self) -> Locator:
         return self._first([
             "label:has-text('Địa chỉ khách hàng') + div input",
@@ -275,6 +291,49 @@ class OrderPage:
             pass
         self.message_box().click(timeout=self._cfg.click_timeout)
 
+    def _wait_for_overlay_masks_hidden(self, timeout_ms: int | None = None) -> bool:
+        """Wait until transient drawer/backdrop masks no longer block pointer events."""
+        wait_ms = max(self._cfg.overlay_dismiss_ms * 4, 800) if timeout_ms is None else max(0, int(timeout_ms))
+        deadline = time.time() + (wait_ms / 1000.0)
+        overlay_selectors = (
+            "div.tds-drawer-mask",
+            "div.cdk-overlay-backdrop",
+        )
+        while True:
+            has_overlay = False
+            for selector in overlay_selectors:
+                try:
+                    locator = self.page.locator(selector).first
+                    if locator.count() > 0 and locator.is_visible():
+                        has_overlay = True
+                        break
+                except Exception:
+                    continue
+            if not has_overlay:
+                return True
+            if time.time() >= deadline:
+                return False
+            self.page.wait_for_timeout(100)
+
+    def _move_mouse_to_locator(self, locator: Locator, steps: int = 12) -> bool:
+        """Move the mouse to the visual center of a locator using small steps."""
+        try:
+            locator.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+        except Exception:
+            pass
+        try:
+            box = locator.bounding_box()
+        except Exception:
+            box = None
+        if not box:
+            return False
+        self.page.mouse.move(
+            box["x"] + (box["width"] / 2),
+            box["y"] + (box["height"] / 2),
+            steps=max(1, int(steps)),
+        )
+        return True
+
     def _wait_panel_closed(self) -> None:
         """Wait for message panel to fully close after pressing Escape."""
         try:
@@ -285,6 +344,12 @@ class OrderPage:
             )
         except Exception:
             self.page.wait_for_timeout(self._cfg.escape_close_ms)
+        if not self._wait_for_overlay_masks_hidden(timeout_ms=max(self._cfg.escape_close_ms * 3, 800)):
+            try:
+                self.page.keyboard.press("Escape")
+            except Exception:
+                pass
+            self._wait_for_overlay_masks_hidden(timeout_ms=max(self._cfg.escape_close_ms * 2, 500))
 
     def _send_batched_in_open_panel(self, message: str, img_list: list[Path], order_code: str) -> None:
         """Send images + optional text in an already-open panel, handling batching."""
@@ -981,11 +1046,35 @@ class OrderPage:
                 self.page.wait_for_timeout(300)
         except Exception:
             pass
+        modal = self.modal()
         try:
-            self.close_button().click(timeout=self._cfg.click_timeout)
+            if modal.count() == 0 or not modal.is_visible():
+                return
+        except Exception:
+            return
+        try:
+            close_btn = self.close_button()
+            if close_btn.count() > 0 and close_btn.is_visible():
+                close_btn.click(timeout=self._cfg.click_timeout)
+            else:
+                self.page.keyboard.press("Escape")
+            try:
+                modal.wait_for(
+                    state="hidden",
+                    timeout=max(self._cfg.escape_close_ms * 2, 500),
+                )
+            except Exception:
+                pass
         except Exception:
             try:
                 self.page.keyboard.press("Escape")
+                try:
+                    modal.wait_for(
+                        state="hidden",
+                        timeout=max(self._cfg.escape_close_ms * 2, 500),
+                    )
+                except Exception:
+                    pass
             except Exception:
                 pass
 
@@ -1029,9 +1118,9 @@ class OrderPage:
             except Exception:
                 self.page.wait_for_timeout(step_ms)
 
-            # Verify status changed to "Đơn hàng" (visible on the order list row)
-            status_tag = self.page.locator("tds-tag:has-text('Đơn hàng')").first
-            if status_tag.count() > 0:
+            # Verify on the SAME order row; global status lookup is too flaky here.
+            status_wait_ms = max(self._cfg.click_slow_timeout, step_ms * 6)
+            if self._wait_for_order_status(order_code, "Đơn hàng", timeout_ms=status_wait_ms):
                 _log(f"  BILL: create_order_bill ok for {order_code}")
                 return True
             else:
@@ -1053,22 +1142,32 @@ class OrderPage:
         modal_timeout_ms = 5000
 
         try:
-            # Click "Phiếu bán hàng" button (file icon)
-            bill_btn = self.page.locator(
-                "button[tooltiptitle='Phiếu bán hàng'], "
-                "button:has(i.tdsi-file-line)"
-            ).first
+            # Scope to chat actions first so we don't accidentally hit the header
+            # "Tạo hóa đơn" button, which can share the same file icon.
+            bill_btn = self._first([
+                "div.chat-acts button[tooltiptitle='Phiếu bán hàng']",
+                "div.chat-acts button:has(i.tdsi-file-line)",
+                "button[tooltiptitle='Phiếu bán hàng']",
+            ])
             if bill_btn.count() == 0:
                 _log(f"  [!] BILL IMG: 'Phiếu bán hàng' button not found for {order_code}")
                 return False
-            bill_btn.click(timeout=self._cfg.click_timeout)
             try:
-                self.page.wait_for_selector(
-                    "virtual-scroller .scrollable-content > div, div.flex.items-center.border-b",
-                    state="visible", timeout=self._cfg.click_slow_timeout,
-                )
+                bill_btn.click(timeout=self._cfg.click_timeout)
             except Exception:
-                self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+                bill_btn.click(timeout=self._cfg.click_timeout, force=True)
+            bill_modal = self.page.locator("app-modal-list-bill").first
+            try:
+                bill_modal.wait_for(state="visible", timeout=self._cfg.click_slow_timeout)
+            except Exception:
+                try:
+                    self.page.wait_for_selector(
+                        "app-modal-list-bill virtual-scroller .scrollable-content > div, "
+                        "app-modal-list-bill div.flex.items-center.border-b",
+                        state="visible", timeout=self._cfg.click_slow_timeout,
+                    )
+                except Exception:
+                    self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
         except Exception as exc:
             _log(f"  [!] BILL IMG: failed to open bill tab for {order_code}: {exc}")
             return False
@@ -1078,7 +1177,8 @@ class OrderPage:
             try:
                 # Step 1: Click three-dots button — scope to first bill row to avoid
                 # hitting the hidden tds-tabs-nav-more button with same icon
-                first_bill_row = self.page.locator(
+                bill_modal = self.page.locator("app-modal-list-bill").first
+                first_bill_row = bill_modal.locator(
                     "virtual-scroller .scrollable-content > div, "
                     "div.flex.items-center.border-b"
                 ).first
@@ -1092,59 +1192,149 @@ class OrderPage:
                     ).first
                 if three_dots_btn.count() == 0:
                     raise RuntimeError("three-dots button not found")
-                three_dots_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
-                three_dots_btn.click(timeout=self._cfg.click_timeout)
+                popover = self.page.locator("div.tds-popover-content").first
+                moved_to_trigger = self._move_mouse_to_locator(three_dots_btn, steps=10)
+                if not moved_to_trigger:
+                    try:
+                        three_dots_btn.hover(timeout=self._cfg.click_timeout)
+                    except Exception:
+                        pass
+                self.page.wait_for_timeout(180)
+                popover_visible = False
+                for open_attempt in range(1, 4):
+                    try:
+                        popover_visible = popover.count() > 0 and popover.is_visible()
+                    except Exception:
+                        popover_visible = False
+                    if popover_visible:
+                        break
+                    try:
+                        if open_attempt == 1:
+                            three_dots_btn.hover(timeout=self._cfg.click_timeout)
+                        elif open_attempt == 2:
+                            three_dots_btn.click(timeout=self._cfg.click_timeout)
+                        else:
+                            three_dots_btn.click(timeout=self._cfg.click_timeout, force=True)
+                    except Exception:
+                        pass
+                    self.page.wait_for_timeout(180)
                 try:
-                    self.page.wait_for_selector(
-                        "div.tds-popover-content",
-                        state="visible", timeout=self._cfg.click_slow_timeout,
-                    )
+                    popover.wait_for(state="visible", timeout=max(self._cfg.bill_create_step_ms, 800))
                 except Exception:
-                    self.page.wait_for_timeout(self._cfg.bill_create_step_ms)
+                    self.page.wait_for_timeout(200)
 
                 # Step 2: Click "Gửi ảnh phiếu bán hàng" from popover
-                popover = self.page.locator("div.tds-popover-content")
-                send_bill_img_btn = popover.locator(
-                    "span:has(i.tdsi-images-fill)"
-                ).first
-                if send_bill_img_btn.count() == 0:
-                    # Fallback: text-based match
-                    send_bill_img_btn = self.page.locator("text=Gửi ảnh phiếu bán hàng").first
-                if send_bill_img_btn.count() == 0:
+                send_bill_img_btn = None
+                send_candidates = [
+                    popover.locator("button:has-text('Gửi ảnh phiếu bán hàng')").first,
+                    popover.locator("[role='menuitem']:has-text('Gửi ảnh phiếu bán hàng')").first,
+                    popover.locator("div[tds-dropdown-item]:has-text('Gửi ảnh phiếu bán hàng')").first,
+                    popover.locator("span.flex.items-center.gap-x-2.rounded.hover\\:bg-info-100.px-2.py-1\\.5.cursor-pointer:has-text('Gửi ảnh phiếu bán hàng')").first,
+                    popover.locator("div:has-text('Gửi ảnh phiếu bán hàng')").first,
+                    popover.locator("span:has-text('Gửi ảnh phiếu bán hàng')").first,
+                    self.page.locator("text=Gửi ảnh phiếu bán hàng").first,
+                ]
+                for candidate in send_candidates:
+                    try:
+                        if candidate.count() > 0:
+                            send_bill_img_btn = candidate
+                            break
+                    except Exception:
+                        continue
+                if send_bill_img_btn is None or send_bill_img_btn.count() == 0:
                     raise RuntimeError("'Gửi ảnh phiếu bán hàng' not found")
-                send_bill_img_btn.click(timeout=self._cfg.click_timeout)
+                moved_to_item = self._move_mouse_to_locator(send_bill_img_btn, steps=16)
+                if not moved_to_item:
+                    try:
+                        send_bill_img_btn.hover(timeout=self._cfg.click_timeout)
+                    except Exception:
+                        pass
+                self.page.wait_for_timeout(160)
+                try:
+                    send_bill_img_btn.click(timeout=self._cfg.click_timeout)
+                except Exception:
+                    # Clicking after a gentle mouse move keeps hover-driven menus open
+                    # more reliably than a direct force-click.
+                    moved_to_item = self._move_mouse_to_locator(send_bill_img_btn, steps=8)
+                    self.page.wait_for_timeout(120)
+                    if moved_to_item:
+                        send_bill_img_btn.click(timeout=self._cfg.click_timeout, force=True)
+                    else:
+                        raise
 
-                # Wait for the bill list modal to disappear (up to 5s)
+                self.page.wait_for_timeout(200)
+
+                # If the bill image attachment appears quickly, don't keep waiting on
+                # the bill modal to disappear — that is the main source of "reply xong
+                # rồi đứng yên vài giây" for TAG 1.
                 modal = self.page.locator("app-modal-list-bill")
-                try:
-                    modal.wait_for(state="hidden", timeout=modal_timeout_ms)
-                except Exception:
-                    # Modal still visible — check if it's really there
-                    if modal.count() > 0 and modal.is_visible():
-                        if attempt < max_retries:
-                            _log(
-                                f"  [!] BILL IMG: modal still visible after {modal_timeout_ms}ms"
-                                f" for {order_code} (attempt {attempt + 1}) — retrying..."
-                            )
-                            self.page.wait_for_timeout(retry_delay_ms)
-                            continue
-                        else:
-                            _log(
-                                f"  [!] BILL IMG: modal still visible after"
-                                f" {max_retries + 1} attempt(s) for {order_code}"
-                                f" — pressing Escape to close modal"
-                            )
-                            self.page.keyboard.press("Escape")
-                            self.page.wait_for_timeout(500)
-                            return False
+                attachment_ready = False
+                settle_deadline = time.time() + (max(1500, self._cfg.bill_image_load_ms * 2) / 1000.0)
+                while time.time() < settle_deadline:
+                    if self._has_pending_content_in_panel():
+                        attachment_ready = True
+                        break
+                    try:
+                        if modal.count() == 0 or not modal.is_visible():
+                            break
+                    except Exception:
+                        break
+                    self.page.wait_for_timeout(200)
 
-                # Modal gone — wait for bill image to attach in panel then send
+                modal_visible = False
                 try:
-                    self.page.wait_for_selector(
-                        "span:has-text('/30')", state="visible", timeout=self._cfg.bill_image_load_ms * 3,
-                    )
+                    modal_visible = modal.count() > 0 and modal.is_visible()
                 except Exception:
-                    self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                    modal_visible = False
+
+                if attachment_ready and modal_visible:
+                    _log(f"  BILL IMG: attachment ready while bill modal still open for {order_code} — closing modal and sending")
+                    try:
+                        self.page.keyboard.press("Escape")
+                        modal.wait_for(state="hidden", timeout=max(self._cfg.escape_close_ms * 2, 500))
+                    except Exception:
+                        pass
+                    modal_visible = False
+
+                if not attachment_ready:
+                    try:
+                        modal.wait_for(state="hidden", timeout=max(1000, modal_timeout_ms // 2))
+                        modal_visible = False
+                    except Exception:
+                        try:
+                            modal_visible = modal.count() > 0 and modal.is_visible()
+                        except Exception:
+                            modal_visible = False
+
+                if not attachment_ready:
+                    try:
+                        self.page.wait_for_selector(
+                            "span:has-text('/30')", state="visible", timeout=self._cfg.bill_image_load_ms * 2,
+                        )
+                        attachment_ready = True
+                    except Exception:
+                        attachment_ready = self._has_pending_content_in_panel()
+
+                if modal_visible and not attachment_ready:
+                    if attempt < max_retries:
+                        _log(
+                            f"  [!] BILL IMG: modal still visible after quick wait"
+                            f" for {order_code} (attempt {attempt + 1}) — retrying..."
+                        )
+                        self.page.wait_for_timeout(retry_delay_ms)
+                        continue
+                    _log(
+                        f"  [!] BILL IMG: modal still visible after"
+                        f" {max_retries + 1} attempt(s) for {order_code}"
+                        f" — pressing Escape to close modal"
+                    )
+                    self.page.keyboard.press("Escape")
+                    self.page.wait_for_timeout(500)
+                    return False
+
+                # Modal gone (or dismissed) — send once the bill image is attached.
+                if not self._has_pending_content_in_panel():
+                    raise RuntimeError("bill image did not attach in message panel")
                 self._click_send_button_reliable(order_code)
                 try:
                     self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
@@ -1905,8 +2095,12 @@ class OrderPage:
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
 
                             # BILL: send bill image after reply comment (TAG 1 only)
-                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
-                                self._send_bill_image_in_panel(order_code)
+                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1:
+                                if self._cfg.enable_create_bill and not bill_created:
+                                    _log(f"  [!] BILL: create not confirmed for {order_code} — still attempting bill image send")
+                                bill_img_sent = self._send_bill_image_in_panel(order_code)
+                                if not bill_img_sent:
+                                    _log(f"  [!] BILL IMG: not sent for {order_code}")
                                 try:
                                     self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
                                 except Exception:
@@ -2236,8 +2430,12 @@ class OrderPage:
                                 self.page.wait_for_timeout(self._cfg.comment_reply_post_ms)
 
                             # BILL: send bill image after reply comment (TAG 1 only)
-                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1 and bill_created:
-                                self._send_bill_image_in_panel(order_code)
+                            if self._cfg.enable_send_bill_image and resolved_tag == TAG_1:
+                                if self._cfg.enable_create_bill and not bill_created:
+                                    _log(f"  [!] BILL: create not confirmed for {order_code} — still attempting bill image send")
+                                bill_img_sent = self._send_bill_image_in_panel(order_code)
+                                if not bill_img_sent:
+                                    _log(f"  [!] BILL IMG: not sent for {order_code}")
                                 try:
                                     self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
                                 except Exception:
@@ -2523,8 +2721,33 @@ class OrderPage:
             return False
 
         _log(f"CSV collect: switching page {current_page} -> {current_page + 1}")
-        self._dismiss_notifications()
-        next_btn.click(timeout=self._cfg.click_slow_timeout)
+        click_error: Exception | None = None
+        for attempt in range(1, 4):
+            self._dismiss_notifications()
+            if not self._wait_for_overlay_masks_hidden(timeout_ms=max(self._cfg.overlay_dismiss_ms * 4, 800)):
+                try:
+                    self.page.keyboard.press("Escape")
+                except Exception:
+                    pass
+                self.page.wait_for_timeout(self._cfg.overlay_dismiss_ms)
+            next_btn = self.pagination_next_button()
+            try:
+                next_btn.scroll_into_view_if_needed(timeout=self._cfg.click_slow_timeout)
+            except Exception:
+                pass
+            try:
+                if attempt < 3:
+                    next_btn.click(timeout=self._cfg.click_slow_timeout)
+                else:
+                    next_btn.click(timeout=self._cfg.click_slow_timeout, force=True)
+                click_error = None
+                break
+            except Exception as exc:
+                click_error = exc
+                _log(f"CSV collect: next-page click attempt {attempt}/3 failed: {exc}")
+                self.page.wait_for_timeout(max(self._cfg.overlay_dismiss_ms, 200))
+        if click_error is not None:
+            raise click_error
 
         for attempt in range(1, 13):
             self.page.wait_for_timeout(self._cfg.pagination_ms)
