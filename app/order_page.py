@@ -11,6 +11,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import Page, Locator
+from playwright._impl._errors import TargetClosedError
 from PIL import Image
 import re
 
@@ -2234,8 +2235,12 @@ class OrderPage:
                     continue
 
                 # Re-fetch rows since DOM may have changed after modal/tag/message interactions
-                rows = self.filtered_order_rows()
-                count = rows.count()
+                try:
+                    rows = self.filtered_order_rows()
+                    count = rows.count()
+                except TargetClosedError:
+                    _log("[!] Page closed unexpectedly after order processing — stopping")
+                    return processed, sum(c for t, c in tag_counts.items() if t not in TAG_ONLY_TAGS), error_count
                 # Don't increment i — re-scan from same index since rows may have shifted
                 # But if count dropped, adjust
                 if i >= count:
