@@ -506,6 +506,74 @@ class OrderPage:
                 self.page.wait_for_timeout(500)
         _log(f"  [!] Send button: all {max_attempts} attempts done for {order_code}")
 
+    def _wait_for_send_settle(self, wait_ms: int) -> None:
+        """Wait for chat send/upload activity to settle."""
+        try:
+            self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
+        except Exception:
+            self.page.wait_for_timeout(wait_ms)
+
+    def _click_latest_send_retry_button(self, order_code: str) -> bool:
+        """Click the retry button on the latest failed outgoing message, if present."""
+        try:
+            error_item = self.page.locator(
+                "div.message-inner.error, div.message-inner-medium.error"
+            ).last
+            retry_candidates = [
+                error_item.locator("button:has(i.tdsi-sync-fill)").first,
+                error_item.locator("[role='button']:has(i.tdsi-sync-fill)").first,
+                error_item.locator("span:has(i.tdsi-sync-fill)").first,
+                self.page.locator("button:has(i.tdsi-sync-fill)").last,
+                self.page.locator("[role='button']:has(i.tdsi-sync-fill)").last,
+            ]
+            retry_btn = None
+            for candidate in retry_candidates:
+                try:
+                    if candidate.count() > 0 and candidate.is_visible():
+                        retry_btn = candidate
+                        break
+                except Exception:
+                    continue
+            if retry_btn is None:
+                _log(f"  [!] BILL IMG: retry button not found for {order_code}")
+                return False
+            try:
+                retry_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+            except Exception:
+                pass
+            self.page.wait_for_timeout(150)
+            try:
+                retry_btn.click(timeout=self._cfg.click_timeout)
+            except Exception:
+                retry_btn.click(timeout=self._cfg.click_timeout, force=True)
+            _log(f"  BILL IMG: clicked retry for {order_code}")
+            return True
+        except Exception as exc:
+            _log(f"  [!] BILL IMG: retry click failed for {order_code}: {exc}")
+            return False
+
+    def _retry_failed_bill_image_send(self, order_code: str, errors_before: int, send_delay: int) -> bool:
+        """Retry a failed bill-image send via the inline sync/retry button."""
+        if not self._check_message_send_error(errors_before):
+            return True
+
+        _log(f"  [!] BILL IMG: send error detected for {order_code}")
+        if not self._click_latest_send_retry_button(order_code):
+            return False
+
+        self._wait_for_send_settle(send_delay)
+        if self._has_pending_content_in_panel():
+            _log(f"  BILL IMG: retry returned content to composer for {order_code} — sending again")
+            self._click_send_button_reliable(order_code)
+            self._wait_for_send_settle(send_delay)
+
+        if self._check_message_send_error(errors_before):
+            _log(f"  [!] BILL IMG: retry still failed for {order_code}")
+            return False
+
+        _log(f"  BILL IMG: retry send ok for {order_code}")
+        return True
+
     def _send_in_panel(self, message: str, image_paths: list[Path] | None, order_code: str) -> None:
         """Send one message (images + text) within an already-open message panel."""
         img_count = len(image_paths) if image_paths else 0
@@ -534,7 +602,7 @@ class OrderPage:
         errors_before = self._count_send_errors()
         self._click_send_button_reliable(order_code)
         send_delay = self._cfg.send_post_base_ms + self._cfg.send_post_per_image_ms * img_count
-        self.page.wait_for_timeout(send_delay)
+        self._wait_for_send_settle(send_delay)
         if self._check_message_send_error(errors_before):
             _log("  [!] Inbox message send error detected")
             try:
@@ -1427,11 +1495,12 @@ class OrderPage:
                 # Modal gone (or dismissed) — send once the bill image is attached.
                 if not self._has_pending_content_in_panel():
                     raise RuntimeError("bill image did not attach in message panel")
+                errors_before = self._count_send_errors()
                 self._click_send_button_reliable(order_code)
-                try:
-                    self.page.wait_for_selector("tds-spin", state="hidden", timeout=self._cfg.spinner_hide_ms)
-                except Exception:
-                    self.page.wait_for_timeout(self._cfg.bill_image_load_ms)
+                send_delay = self._cfg.send_post_base_ms + self._cfg.send_post_per_image_ms
+                self._wait_for_send_settle(send_delay)
+                if not self._retry_failed_bill_image_send(order_code, errors_before, send_delay):
+                    raise RuntimeError("bill image send retry failed")
 
                 _log(f"  BILL IMG: sent for {order_code}")
                 return True
