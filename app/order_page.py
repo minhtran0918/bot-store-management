@@ -274,11 +274,10 @@ class OrderPage:
         """Wait for a specific status tag to appear on the list row of one order."""
         wait_ms = self._cfg.click_slow_timeout if timeout_ms is None else max(0, int(timeout_ms))
         deadline = time.time() + (wait_ms / 1000.0)
-        status_locator = f"tds-tag:has-text('{status_text}')"
         while True:
             try:
                 row = self.row_by_code(order_code)
-                if row.count() > 0 and row.locator(status_locator).first.count() > 0:
+                if self._row_has_order_status(row, status_text):
                     return True
             except Exception:
                 pass
@@ -1889,6 +1888,52 @@ class OrderPage:
                     i += 1
                     continue
 
+                if self._is_order_status_huy(row):
+                    total_seen += 1
+                    channel_cell = cells.nth(5)
+                    channel_span = channel_cell.locator("span.ml-2").first
+                    channel_name = channel_span.inner_text().strip() if channel_span.count() > 0 else channel_cell.inner_text().strip()
+
+                    customer_cell = cells.nth(6)
+                    customer_p = customer_cell.locator("p").first
+                    customer_name = customer_p.inner_text().strip() if customer_p.count() > 0 else customer_cell.inner_text().strip()
+
+                    total_amount = cells.nth(7).inner_text().strip()
+                    total_qty = cells.nth(8).inner_text().strip()
+
+                    processed += 1
+                    row_data_t0: dict[str, str] = {
+                        "No": stt,
+                        "Order_Code": order_code,
+                        "Tag": TAG_0,
+                        "Channel": channel_name,
+                        "Customer": customer_name,
+                        "Total_Amount": total_amount,
+                        "Total_Qty": total_qty,
+                        "Address_Status": "CANCELLED",
+                        "Note": "status=Hủy",
+                        "Match_Product": "",
+                        "Decision": "skip_cancelled",
+                        "Comment": "",
+                    }
+                    _log(f"---- ORDER = {order_code}  ({processed})  {customer_name}  status 'Hủy' -> TAG 0 ----")
+                    if _should_skip_for_tag_1_2_only(tag_1_2_only, TAG_0):
+                        row_data_t0["Decision"] = "skip_tag_1_2_only"
+                        row_data_t0["Note"] = "resolved_tag=0 status=Hủy skipped_by_cli"
+                        _log("  SKIP ALL ACTIONS: only TAG 1 & TAG 2 mode")
+                    else:
+                        if not self._apply_processed_tag_to_order(order_code, TAG_0):
+                            row_data_t0["Tag"] = ERR
+                            error_count += 1
+                            _log(f"  [!] TAG 0 FAILED")
+                        else:
+                            _log(f"  TAG -> 0")
+                    tag_counts[TAG_0] = tag_counts.get(TAG_0, 0) + 1
+                    csv_writer.write_row(row_data_t0)
+                    _log(f"  CSV +1: total={csv_writer.count}")
+                    i += 1
+                    continue
+
                 # Check status: must be 'Nháp'
                 if not self._is_order_status_nhap(row):
                     total_skipped += 1
@@ -2267,7 +2312,7 @@ class OrderPage:
         return processed, action_count, error_count
 
     def enrich_collected_rows(self, rows_data: list[dict[str, str]], data_dir: Path | None = None, campaign_label: str = "", price_code_mapping: dict[str, int | None] | None = None) -> tuple[int, int, int]:
-        # Build lookups: qualify (no tag) and tag0 (not-binh-thuong, need TAG 0 applied)
+        # Build lookups: qualify (no tag) and pre-resolved TAG 0 rows
         whitelist = set(self._cfg.test_order_ids)
         qualify_lookup: dict[str, dict[str, str]] = {}
         tag0_lookup: dict[str, dict[str, str]] = {}
@@ -2277,7 +2322,7 @@ class OrderPage:
             decision = str(r.get("Decision", "")).strip()
             if not code:
                 continue
-            if decision == "skip_not_binh_thuong":
+            if decision in {"skip_not_binh_thuong", "skip_cancelled"}:
                 if whitelist and code not in whitelist:
                     continue
                 tag0_lookup[code] = r
@@ -2291,7 +2336,7 @@ class OrderPage:
         _log("=" * 60)
         if whitelist:
             _log(f"WHITELIST mode: only processing {len(whitelist)} order(s): {', '.join(whitelist)}")
-        _log(f"ENRICH: {total} qualifying orders (no tag) | {len(tag0_lookup)} not-binh-thuong (TAG 0) | skipped {skipped_existing} with tags")
+        _log(f"ENRICH: {total} qualifying orders (no tag) | {len(tag0_lookup)} pre-resolved TAG 0 | skipped {skipped_existing} with tags")
         _log("=" * 60)
 
         processed = 0
@@ -2318,10 +2363,14 @@ class OrderPage:
                 if order_code not in qualify_lookup and order_code not in tag0_lookup:
                     continue
 
-                # Not-binh-thuong: apply TAG 0 without opening modal
+                # Pre-resolved TAG 0: apply without opening modal
                 if order_code in tag0_lookup:
                     rd = tag0_lookup.pop(order_code)
-                    _log(f"TAG 0: order={order_code} customer not 'Bình thường'")
+                    decision = str(rd.get("Decision", "")).strip()
+                    if decision == "skip_cancelled":
+                        _log(f"TAG 0: order={order_code} status 'Hủy'")
+                    else:
+                        _log(f"TAG 0: order={order_code} customer not 'Bình thường'")
                     if not self._apply_processed_tag_to_order(order_code, TAG_0):
                         rd["Tag"] = ERR
                         error_count += 1
@@ -2592,13 +2641,24 @@ class OrderPage:
         action_count = sum(c for t, c in tag_counts.items() if t not in TAG_ONLY_TAGS)
         return processed, action_count, error_count
 
-    def _is_order_status_nhap(self, row: Locator) -> bool:
-        """Check if the order row has status 'Nháp' (Draft)."""
+    def _order_status_locator(self, status_text: str) -> str:
+        """Build the locator used for order workflow status tags."""
+        return f"tds-tag:has-text('{status_text}')"
+
+    def _row_has_order_status(self, row: Locator, status_text: str) -> bool:
+        """Check row status using the same DOM selector pattern as _wait_for_order_status."""
         try:
-            status_tag = row.locator("tds-tag:has-text('Nháp')").first
-            return status_tag.count() > 0
+            return row.count() > 0 and row.locator(self._order_status_locator(status_text)).first.count() > 0
         except Exception:
             return False
+
+    def _is_order_status_nhap(self, row: Locator) -> bool:
+        """Check if the order row has status 'Nháp' (Draft)."""
+        return self._row_has_order_status(row, "Nháp")
+
+    def _is_order_status_huy(self, row: Locator) -> bool:
+        """Check if the order row has status 'Hủy' (Cancelled)."""
+        return self._row_has_order_status(row, "Hủy")
 
     def _is_customer_normal(self, row: Locator) -> bool:
         """Check visible customer tags on the list row only.
@@ -2712,6 +2772,7 @@ class OrderPage:
         remaining_limit: int | None = None,
     ) -> tuple[int, int]:
         """Extract qualifying rows: no tag + Nháp status + Bình thường customer.
+        Rows with status 'Hủy' are pre-resolved to TAG 0.
         remaining_limit counts ALL rows (added + skipped) toward the cap.
         Returns (added_count, skipped_count).
         """
@@ -2745,6 +2806,37 @@ class OrderPage:
             if tags:
                 skipped += 1
                 _log(f"CSV collect SKIP: stt={stt} order={order_code} reason=tag '{tag_value}'")
+                continue
+
+            if self._is_order_status_huy(row):
+                channel_cell = cells.nth(5)
+                channel_span = channel_cell.locator("span.ml-2").first
+                channel_name = channel_span.inner_text().strip() if channel_span.count() > 0 else channel_cell.inner_text().strip()
+
+                customer_cell = cells.nth(6)
+                customer_p = customer_cell.locator("p").first
+                customer_name = customer_p.inner_text().strip() if customer_p.count() > 0 else customer_cell.inner_text().strip()
+
+                total_amount = cells.nth(7).inner_text().strip()
+                total_qty = cells.nth(8).inner_text().strip()
+
+                _log(f"CSV collect: stt={stt} order={order_code} status 'Hủy' -> TAG 0")
+                data.append({
+                    "No": stt,
+                    "Order_Code": order_code,
+                    "Tag": TAG_0,
+                    "Channel": channel_name,
+                    "Customer": customer_name,
+                    "Total_Amount": total_amount,
+                    "Total_Qty": total_qty,
+                    "Address_Status": "CANCELLED",
+                    "Note": "status=Hủy",
+                    "Match_Product": "",
+                    "Decision": "skip_cancelled",
+                    "Comment": "",
+                })
+                existing_codes.add(order_code)
+                added += 1
                 continue
 
             # Check order status: must be 'Nháp'
