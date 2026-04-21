@@ -11,9 +11,10 @@ from app.store import log_action
 from app.config_loader import load_config
 from app.cli_helpers import (
     FEATURE_CONFIRM_ORDER,
+    RUN_MODE_ALL,
     prompt_campaign_label,
     prompt_price_code_mapping,
-    prompt_tag_1_2_only,
+    prompt_run_mode,
     prompt_feature_run,
 )
 from app.cli_menu import show_banner, show_summary
@@ -56,10 +57,10 @@ def main():
 
     csv_output_path: Path | None = None
     price_code_mapping: dict[str, int | None] = {}
-    tag_1_2_only = False
+    run_mode = RUN_MODE_ALL
 
     if feature_run == FEATURE_CONFIRM_ORDER:
-        tag_1_2_only = prompt_tag_1_2_only()
+        run_mode = prompt_run_mode()
         price_code_mapping = prompt_price_code_mapping()
 
     try:
@@ -78,14 +79,15 @@ def main():
         ("Campaign", campaign_label),
     ]
     if feature_run == FEATURE_CONFIRM_ORDER:
-        summary_items.append(("Only TAG 1&2", "Có" if tag_1_2_only else "Không"))
+        mode_labels = {"all": "Tất cả", "tag_1_2_only": "TAG 1 & TAG 2", "others_only": "Các TAG còn lại"}
+        summary_items.append(("Chế độ chạy", mode_labels.get(run_mode, run_mode)))
         summary_items.append(("Price Codes", price_map_text))
     show_summary(summary_items)
 
     log_console("=" * 80)
     log_console(
         f"[CLI] Selected options | feature={feature_run} | campaign='{campaign_label}' "
-        f"| only_tag_1_2={'yes' if tag_1_2_only else 'no'} | price_codes={price_map_text}"
+        f"| run_mode={run_mode} | price_codes={price_map_text}"
     )
     log_console("[START] Begin automation process")
 
@@ -151,7 +153,7 @@ def main():
                     data_dir=DATA_DIR,
                     bot_config=bot_config,
                     price_code_mapping=price_code_mapping,
-                    tag_1_2_only=tag_1_2_only,
+                    run_mode=run_mode,
                 )
 
             if interrupted:
