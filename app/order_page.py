@@ -494,8 +494,14 @@ class OrderPage:
                     send_btn.click(timeout=self._cfg.click_timeout)
                 except Exception:
                     send_btn.click(timeout=self._cfg.click_timeout, force=True)
-                self.page.wait_for_timeout(500)
-                if not self._has_pending_content_in_panel():
+                # Poll up to 1500ms for compose panel to clear (500ms was too short on slow connections)
+                cleared = False
+                for _ in range(5):
+                    self.page.wait_for_timeout(300)
+                    if not self._has_pending_content_in_panel():
+                        cleared = True
+                        break
+                if cleared:
                     # Content sent — click once more as safety tap
                     try:
                         send_btn = self.send_message_button()
@@ -539,7 +545,7 @@ class OrderPage:
                 except Exception:
                     continue
             if retry_btn is None:
-                _log(f"  [!] BILL IMG: retry button not found for {order_code}")
+                _log(f"  [!] Send retry button not found for {order_code}")
                 return False
             try:
                 retry_btn.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
@@ -550,10 +556,10 @@ class OrderPage:
                 retry_btn.click(timeout=self._cfg.click_timeout)
             except Exception:
                 retry_btn.click(timeout=self._cfg.click_timeout, force=True)
-            _log(f"  BILL IMG: clicked retry for {order_code}")
+            _log(f"  Send retry clicked for {order_code}")
             return True
         except Exception as exc:
-            _log(f"  [!] BILL IMG: retry click failed for {order_code}: {exc}")
+            _log(f"  [!] Send retry click failed for {order_code}: {exc}")
             return False
 
     def _retry_failed_bill_image_send(self, order_code: str, errors_before: int, send_delay: int) -> bool:
@@ -618,6 +624,17 @@ class OrderPage:
                 _log(f"  [!] Screenshot: {sc_path}")
             except Exception as sc_exc:
                 _log(f"  [!] Screenshot failed: {sc_exc}")
+            _log(f"  [!] Attempting inline retry for {order_code}...")
+            if self._click_latest_send_retry_button(order_code):
+                self._wait_for_send_settle(send_delay)
+                if self._has_pending_content_in_panel():
+                    _log(f"  Retry returned content to composer — sending again")
+                    self._click_send_button_reliable(order_code)
+                    self._wait_for_send_settle(send_delay)
+                if not self._check_message_send_error(errors_before):
+                    _log(f"  [!] Inline retry ok for {order_code}")
+                else:
+                    _log(f"  [!] Inline retry still failed for {order_code}")
         msg_short = message[:30] + "..." if len(message) > 30 else message
         _log(f"  SEND: text='{msg_short}' | images={img_count}")
 
