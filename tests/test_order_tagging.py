@@ -8,7 +8,7 @@ from app.order_page import (
     OrderPage,
     _build_match_label,
     _resolve_product_match_tag,
-    _should_skip_for_tag_1_2_only,
+    _should_skip_for_run_mode,
 )
 
 
@@ -78,17 +78,28 @@ class OrderTaggingTestCase(unittest.TestCase):
         self.assertEqual(_build_match_label(6, 7, TAG_2_2), "PARTIAL (6/7)")
 
     def test_tag_1_2_only_allows_only_exact_tag_1_and_tag_2(self):
-        self.assertFalse(_should_skip_for_tag_1_2_only(True, TAG_1))
-        self.assertFalse(_should_skip_for_tag_1_2_only(True, TAG_2))
+        self.assertFalse(_should_skip_for_run_mode("tag_1_2_only", TAG_1))
+        self.assertFalse(_should_skip_for_run_mode("tag_1_2_only", TAG_2))
 
     def test_tag_1_2_only_skips_other_tags(self):
-        self.assertTrue(_should_skip_for_tag_1_2_only(True, TAG_0))
-        self.assertTrue(_should_skip_for_tag_1_2_only(True, TAG_1_1))
-        self.assertTrue(_should_skip_for_tag_1_2_only(True, TAG_1_2))
-        self.assertTrue(_should_skip_for_tag_1_2_only(True, TAG_1_4))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_only", TAG_0))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_only", TAG_1_1))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_only", TAG_1_2))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_only", TAG_1_4))
 
-    def test_tag_1_2_only_disabled_does_not_skip(self):
-        self.assertFalse(_should_skip_for_tag_1_2_only(False, TAG_1_1))
+    def test_all_mode_does_not_skip(self):
+        self.assertFalse(_should_skip_for_run_mode("all", TAG_1_1))
+
+    def test_others_only_skips_tag_1_and_tag_2(self):
+        self.assertTrue(_should_skip_for_run_mode("others_only", TAG_1))
+        self.assertTrue(_should_skip_for_run_mode("others_only", TAG_2))
+
+    def test_others_only_allows_remaining_tags(self):
+        self.assertFalse(_should_skip_for_run_mode("others_only", TAG_0))
+        self.assertFalse(_should_skip_for_run_mode("others_only", TAG_1_1))
+        self.assertFalse(_should_skip_for_run_mode("others_only", TAG_1_2))
+        self.assertFalse(_should_skip_for_run_mode("others_only", TAG_2_1))
+        self.assertFalse(_should_skip_for_run_mode("others_only", TAG_2_2))
 
     def test_customer_without_any_tag_is_treated_as_normal(self):
         order_page = OrderPage.__new__(OrderPage)

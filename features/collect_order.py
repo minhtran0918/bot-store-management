@@ -21,7 +21,7 @@ def run_collect_order_flow(
     data_dir: Path | None = None,
     bot_config: BotConfig | None = None,
     price_code_mapping: dict[str, int | None] | None = None,
-    tag_1_2_only: bool = False,
+    run_mode: str = "all",
 ) -> tuple[int, Path | None]:
     try:
         max_records = bot_config.test_max_collect_records if bot_config else None
@@ -37,7 +37,7 @@ def run_collect_order_flow(
                 data_dir=data_dir,
                 campaign_label=campaign_label,
                 price_code_mapping=price_code_mapping,
-                tag_1_2_only=tag_1_2_only,
+                run_mode=run_mode,
             )
 
         total = csv_writer.count

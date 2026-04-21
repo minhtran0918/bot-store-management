@@ -8,6 +8,10 @@ from app.cli_menu import select, text_input, show_summary
 FEATURE_CONFIRM_ORDER = "confirm_order"
 TOTAL_STEPS = 4
 
+RUN_MODE_ALL = "all"
+RUN_MODE_TAG_1_2 = "tag_1_2_only"
+RUN_MODE_OTHERS = "others_only"
+
 
 def prompt_feature_run() -> str:
     choices = [
@@ -82,12 +86,13 @@ def prompt_campaign_label() -> str:
     return yesterday_label
 
 
-def prompt_tag_1_2_only() -> bool:
+def prompt_run_mode() -> str:
     choices = [
-        {"name": "Không            — xử lý theo tất cả tag", "value": "no"},
-        {"name": "Có               — chỉ xử lý TAG 1 và TAG 2", "value": "yes"},
+        {"name": "Xử lý tất cả đơn hàng", "value": RUN_MODE_ALL},
+        {"name": "Xử lý TAG 1 và TAG 2", "value": RUN_MODE_TAG_1_2},
+        {"name": "Xử lý các TAG còn lại (trừ TAG 1 và TAG 2)", "value": RUN_MODE_OTHERS},
     ]
-    return select("Chỉ chạy TAG 1 & TAG 2", choices, step=3, total=TOTAL_STEPS, default="no") == "yes"
+    return select("Chọn chế độ chạy", choices, step=3, total=TOTAL_STEPS, default=RUN_MODE_ALL)
 
 
 MAX_A_CODES = 9  # A1..A9

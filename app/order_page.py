@@ -82,9 +82,13 @@ def _build_match_label(matched_count: int, total_products: int, resolved_tag: st
     return f"FULL 1-3 ({matched_count}/{total_products})"
 
 
-def _should_skip_for_tag_1_2_only(tag_1_2_only: bool, resolved_tag: str) -> bool:
-    """When enabled, only TAG 1 and TAG 2 are actionable."""
-    return tag_1_2_only and resolved_tag not in (TAG_1, TAG_2)
+def _should_skip_for_run_mode(run_mode: str, resolved_tag: str) -> bool:
+    """Returns True when the current run mode filters out this tag."""
+    if run_mode == "tag_1_2_only":
+        return resolved_tag not in (TAG_1, TAG_2)
+    if run_mode == "others_only":
+        return resolved_tag in (TAG_1, TAG_2)
+    return False
 
 class OrderPage:
     def __init__(self, page: Page, bot_config: BotConfig | None = None):
@@ -1886,7 +1890,7 @@ class OrderPage:
         data_dir: Path | None = None,
         campaign_label: str = "",
         price_code_mapping: dict[str, int | None] | None = None,
-        tag_1_2_only: bool = False,
+        run_mode: str = "all",
     ) -> tuple[int, int, int]:
         """Single-pass: read each row, enrich immediately, write to CSV.
 
@@ -1905,8 +1909,10 @@ class OrderPage:
 
         whitelist = set(self._cfg.test_order_ids)
         _log(f"SINGLE-PASS started: rows={count} on page={page_index}")
-        if tag_1_2_only:
+        if run_mode == "tag_1_2_only":
             _log("TAG FILTER mode: only TAG 1 & TAG 2 will run actions")
+        elif run_mode == "others_only":
+            _log("TAG FILTER mode: TAG 1 & TAG 2 will be skipped")
         if whitelist:
             _log(f"WHITELIST mode: only processing {len(whitelist)} order(s): {', '.join(whitelist)}")
         if expected_total is not None:
@@ -2043,10 +2049,10 @@ class OrderPage:
                         "Comment": "",
                     }
                     _log(f"---- ORDER = {order_code}  ({processed})  {customer_name}  customer not 'Bình thường' -> TAG 0 ----")
-                    if _should_skip_for_tag_1_2_only(tag_1_2_only, TAG_0):
-                        row_data_t0["Decision"] = "skip_tag_1_2_only"
+                    if _should_skip_for_run_mode(run_mode, TAG_0):
+                        row_data_t0["Decision"] = "skip_run_mode_filter"
                         row_data_t0["Note"] = "resolved_tag=0 skipped_by_cli"
-                        _log("  SKIP ALL ACTIONS: only TAG 1 & TAG 2 mode")
+                        _log("  SKIP ALL ACTIONS: run mode filter")
                     else:
                         if not self._apply_processed_tag_to_order(order_code, TAG_0):
                             row_data_t0["Tag"] = ERR
@@ -2101,10 +2107,10 @@ class OrderPage:
                         row_data["Decision"] = "skip_not_binh_thuong"
                         self._close_edit_modal_safely()
                         self._dismiss_notifications()
-                        if _should_skip_for_tag_1_2_only(tag_1_2_only, TAG_0):
-                            row_data["Decision"] = "skip_tag_1_2_only"
+                        if _should_skip_for_run_mode(run_mode, TAG_0):
+                            row_data["Decision"] = "skip_run_mode_filter"
                             row_data["Note"] = f"resolved_tag=0 customer_tag={modal_customer_tag} (modal)"
-                            _log("  SKIP ALL ACTIONS: only TAG 1 & TAG 2 mode")
+                            _log("  SKIP ALL ACTIONS: run mode filter")
                         elif TAG_0 != old_tag:
                             if not self._apply_processed_tag_to_order(order_code, TAG_0):
                                 row_data["Tag"] = ERR
@@ -2135,10 +2141,10 @@ class OrderPage:
                         row_data["Decision"] = "skip_low_rate"
                         self._close_edit_modal_safely()
                         self._dismiss_notifications()
-                        if _should_skip_for_tag_1_2_only(tag_1_2_only, TAG_0):
-                            row_data["Decision"] = "skip_tag_1_2_only"
+                        if _should_skip_for_run_mode(run_mode, TAG_0):
+                            row_data["Decision"] = "skip_run_mode_filter"
                             row_data["Note"] = f"resolved_tag=0 low_rate={rate_text}" if rate_text else "resolved_tag=0 low_rate"
-                            _log("  SKIP ALL ACTIONS: only TAG 1 & TAG 2 mode")
+                            _log("  SKIP ALL ACTIONS: run mode filter")
                         elif TAG_0 != old_tag:
                             if not self._apply_processed_tag_to_order(order_code, TAG_0):
                                 row_data["Tag"] = ERR
@@ -2179,10 +2185,10 @@ class OrderPage:
                     row_data["Tag"] = resolved_tag
                     row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
 
-                    if _should_skip_for_tag_1_2_only(tag_1_2_only, resolved_tag):
-                        row_data["Decision"] = "skip_tag_1_2_only"
+                    if _should_skip_for_run_mode(run_mode, resolved_tag):
+                        row_data["Decision"] = "skip_run_mode_filter"
                         row_data["Note"] = f"resolved_tag={resolved_tag} skipped_by_cli"
-                        _log(f"  SKIP ALL ACTIONS: resolved_tag={resolved_tag} (only TAG 1 & TAG 2 mode)")
+                        _log(f"  SKIP ALL ACTIONS: resolved_tag={resolved_tag} (run mode filter)")
                         self._close_edit_modal_safely()
                         self._dismiss_notifications()
                         tag_counts[resolved_tag] = tag_counts.get(resolved_tag, 0) + 1
