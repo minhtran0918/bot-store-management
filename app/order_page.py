@@ -2009,10 +2009,10 @@ class OrderPage:
                         "Comment": "",
                     }
                     _log(f"---- ORDER = {order_code}  ({processed})  {customer_name}  status 'Hủy' -> TAG 0 ----")
-                    if _should_skip_for_tag_1_2_only(tag_1_2_only, TAG_0):
-                        row_data_t0["Decision"] = "skip_tag_1_2_only"
+                    if _should_skip_for_run_mode(run_mode, TAG_0):
+                        row_data_t0["Decision"] = "skip_run_mode_filter"
                         row_data_t0["Note"] = "resolved_tag=0 status=Hủy skipped_by_cli"
-                        _log("  SKIP ALL ACTIONS: only TAG 1 & TAG 2 mode")
+                        _log("  SKIP ALL ACTIONS: run mode filter")
                     else:
                         if not self._apply_processed_tag_to_order(order_code, TAG_0):
                             row_data_t0["Tag"] = ERR
