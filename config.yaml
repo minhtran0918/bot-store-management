@@ -57,9 +57,9 @@ messages:
 
   # ask address: ask for address (no-address orders). {name} = customer name.
   ask_address_templates:
-    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
-    - "Dạ chị ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
-    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
+    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop soạn hàng cho đỡ thiếu đồ ạ. Đơn hàng báo trễ, hàng tồn kho shop chốt khách khác ạ !"
+    - "Dạ chị ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
+    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
 
   # ask address (case 2.3): ask for address when no products in order list. {name} = customer name.
   ask_address_no_product_templates:
