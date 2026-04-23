@@ -57,46 +57,46 @@ messages:
 
   # ask address: ask for address (no-address orders). {name} = customer name.
   ask_address_templates:
-    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
-    - "Dạ chị ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
-    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
+    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop soạn hàng cho đỡ thiếu đồ ạ. Đơn hàng báo trễ, hàng tồn kho shop chốt khách khác ạ !"
+    - "Dạ chị ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
+    - "Dạ chị {name} ! Số lượng đơn chốt đủ bộ\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
 
   # ask address (case 2.3): ask for address when no products in order list. {name} = customer name.
   ask_address_no_product_templates:
-    - "Dạ chị {name} !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
-    - "Dạ chị !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ !"
-    - "Dạ chị {name} !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop cắt tồn soạn hàng cho đỡ thiếu đồ ạ. Đơn báo trễ hàng tồn kho shop chốt khách khác ạ ! {name}"
+    - "Dạ chị {name} !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop  soạn hàng đi đơn cho đỡ thiếu đồ ạ."
+    - "Dạ chị !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị {name} báo sớm shop  soạn hàng đi đơn cho đỡ thiếu đồ ạ. "
+    - "Dạ chị {name} !\nChị \"GỬI ĐỊA CHỈ\" shop đi đơn ạ ! \nChị báo sớm shop  soạn hàng đi đơn cho đỡ thiếu đồ ạ."
 
   # ask deposit: deposit request. {name} = customer name.
-  deposit_template: "Dạ chị {name} !\n1/ Đơn 4 bộ cọc 100, 8 bộ cọc 200,.. ( thêm +4 bộ cọc 100 )\n2/ Hủy đơn đặt lại có cọc 100 ạ! ( Đơn xã, không nhận hàng,...)\n----\nNGUYEN THI NGOC NHUNG\nACB\n19337611"
+  deposit_template: "Dạ chị {name} !\n1/ Đơn đặt bên shop 4 bộ cọc 100, 8 bộ cọc 200,.. ( cứ thêm +4 bộ cọc thêm 100 ạ )\n----\nNGUYEN THI NGOC NHUNG\nACB\n19337611"
 
   # OOS line format per product. Placeholders: {price}, {name}, {forecast}.
   oos_line_format: "- {price}, {name}"
 
   # OOS notification templates. {name} = customer name, {oos_lines} = formatted OOS product list.
   oos_templates:
-    - "Dạ chị ơi những mẫu hết tồn:\n{oos_lines}\nChị lấy màu khác không chị hay shop bỏ bộ đó ra, shop đi đơn luôn cho chị {name}."
+    - "Dạ chị ơi những mẫu shop gửi ảnh là còn tồn ạ.\n Mẫu đang hết tồn là :\n- Giá: {oos_lines}\n Mẫu hết tồn chị lấy màu khác không chị, hay shop bỏ bộ đó ra, shop đi đơn luôn cho chị {name} ạ."
 
   # reply comment for TAG 1 (order confirmed): FB comment reply when order is placed. {name} = customer name.
   comment_order_done_templates:
-    - "Dạ chị {name} ơi ! shop lên đơn cho chị rồi ạ ! chị check mess ạ."
-    - "Dạ chị {name} ơi ! shop vừa lên đơn cho chị rồi ạ ! chị check mess ạ."
+    - "Chị {name} ơi ! shop lên đơn rồi ạ ! chị check mess ạ."
+    - "Dạ chị {name} ! shop vừa lên đơn ! chị xem tin mess ạ."
     - "Shop lên đơn cho chị rồi ạ ! chị {name} check mess ạ."
-    - "Shop lên đơn cho chị rồi ạ ! chị {name} check mess ạ."
+    - "Shop lên đơn ! chị {name} xem tin mess ạ."
     - "Dạ chị ! shop lên đơn cho chị rồi ạ ! chị {name} check mess xem ạ !"
-    - "Dạ chị ! shop lên đơn cho chị rồi ạ ! chị  {name} check mess xem ạ !"
+    - "Dạ chị ! shop vừa lên đơn cho chị ! chị  {name} tin mess xem ạ !"
 
   # reply comment: FB comment reply templates. {name} = customer name.
   comment_fallback_templates:
-    - "Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị không được ạ."
-    - "Dạ chị {name} rep lại shop với ạ ! Shop gửi tin nhắn cho chị chưa thấy phản hồi ạ."
-    - "Dạ chị {name} rep lại shop với ạ ! Tin nhắn bên shop chưa gửi được cho chị ạ."
-    - "Dạ chị {name} rep lại shop với ạ ! Bên shop nhắn chị chưa được nên nhờ chị phản hồi giúp ạ."
-    - "Dạ chị {name} rep lại shop với ạ ! Shop liên hệ tin nhắn với chị chưa được ạ."
-    - "Dạ chị {name} rep lại shop với ạ ! Bên shop gửi tin nhắn cho chị chưa thấy hiển thị ạ."
-    - "Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị nhưng hệ thống chưa gửi được ạ."
-    - "Dạ chị {name} rep lại shop với ạ ! Tin nhắn shop gửi chị chưa tới được ạ."
-    - "Dạ chị {name} rep lại shop với ạ ! Shop liên hệ chị qua tin nhắn chưa được ạ."
+    - "Shop nhắn cho chị chưa thấy phản hồi ạ. Dạ chị {name} rep lại shop với ạ ! "
+    - "Dạ chị {name} rep lại shop với ! Shop nhắn chị không được ạ."
+    - "Dạ chị {name} ơi ! nhắn lại shop với ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Bên shop nhắn , chị phản hồi giúp ạ."
+    - "Dạ chị {name} rep tin shop ạ ! Shop liên hệ chị chưa được ạ."
+    - "Dạ chị {name} ! Shop nhắn, chị chưa phản hồi ạ."
+    - "Dạ chị {name} rep lại shop ạ ! Shop nhắn chị chưa được ạ."
+    - "Dạ chị {name} rep lại shop với ạ ! Shop vừa nhắn chị phản hồi shop ạ."
+    - "Dạ chị {name} ! Shop liên hệ chị qua tin nhắn chưa được ạ."
     - "Dạ chị {name} rep lại shop với ạ ! Shop nhắn chị nhưng chưa thấy nhận được phản hồi ạ."
 
 keywords:
