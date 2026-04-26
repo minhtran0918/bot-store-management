@@ -1731,6 +1731,11 @@ class OrderPage:
                 if candidates:
                     best_dt, _, best_item = max(candidates, key=lambda x: x[0])
                     _log(f"  POST MATCH: {best_dt.strftime('%d-%m-%Y %H:%M')}")
+                    try:
+                        best_item.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+                        self.page.wait_for_timeout(400)
+                    except Exception:
+                        pass
                     break
 
                 # Not found — scroll up to load older content
@@ -1776,10 +1781,17 @@ class OrderPage:
                 except Exception:
                     pass
 
-            # PASS 2: no star found — pick first enabled comment in scoped range
+            # PASS 2: no star found — pick first enabled comment in scoped range.
+            # Hover each comment to reveal the reply button (hidden until hover in TPOS UI).
             if reply_btn is None:
                 for ci in range(user_comments.count()):
                     comment = user_comments.nth(ci)
+                    try:
+                        comment.scroll_into_view_if_needed(timeout=self._cfg.click_timeout)
+                        comment.hover(timeout=self._cfg.click_timeout)
+                        self.page.wait_for_timeout(200)
+                    except Exception:
+                        pass
                     btn = comment.locator("button:has-text('Phản hồi')").first
                     if btn.count() == 0 or btn.is_disabled():
                         continue
