@@ -1074,8 +1074,8 @@ class OrderPage:
                 return False, text
             delivered, total = int(m.group(1)), int(m.group(2))
 
-            # 0/0 = first-time customer, not low rate
-            if total == 0:
+            # 0/0 or x/1 = sample too small, not considered low rate
+            if total <= 1:
                 return False, text
 
             rate_pct = (delivered / total) * 100
