@@ -8,7 +8,7 @@ bot:
   max_images_per_send: 3        # Max images per message send (larger sets are split into batches).
   test_order_ids: []            # Only process these order codes (empty = process all). E.g. ["ORD001", "ORD002"]
   reload_every_n_orders: 6      # Reload page every N processed orders to free memory. Set to 0 to disable.
-  low_delivery_rate_pct: 60     # Delivery success rate threshold (%). Below this → TAG 0 (skip). 0/0 = OK.
+  low_delivery_rate_pct: 60     # Below threshold -> TAG 0 (skip). 0/0, x/1, 1/2 = OK.
   comment_reply_max_retries: 2  # Retry comment reply this many times on failure (0 = no retry).
   bill_reload_retry_count: 2   # Retry sending bill image this many times after reload on failure (0 = no retry).
 

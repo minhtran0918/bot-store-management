@@ -42,11 +42,13 @@ class _FakeLocator:
 
 
 class _FakePage:
-    def __init__(self, locator_map: dict[str, _FakeLocator] | None = None):
+    def __init__(self, locator_map: dict[str, _FakeLocator] | None = None,
+                 default_locator: _FakeLocator | None = None):
         self._locator_map = locator_map or {}
+        self._default_locator = default_locator or _FakeLocator()
 
     def locator(self, selector: str) -> _FakeLocator:
-        return self._locator_map.get(selector, _FakeLocator())
+        return self._locator_map.get(selector, self._default_locator)
 
 
 class OrderTaggingTestCase(unittest.TestCase):
@@ -163,6 +165,34 @@ class OrderTaggingTestCase(unittest.TestCase):
 
         self.assertFalse(should_skip)
         self.assertEqual(customer_tag, "Bình thường")
+
+    def test_delivery_rate_one_of_two_is_not_low(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(inner_text_read_ms=1000, low_delivery_rate_pct=60)
+        rate_text = "Delivery success rate: 50% (1/2)"
+        order_page.page = _FakePage(default_locator=_FakeLocator(
+            count_value=1,
+            inner_text_value=rate_text,
+        ))
+
+        is_low_rate, text = order_page._check_delivery_rate()
+
+        self.assertFalse(is_low_rate)
+        self.assertEqual(text, rate_text)
+
+    def test_delivery_rate_below_threshold_with_larger_sample_is_low(self):
+        order_page = OrderPage.__new__(OrderPage)
+        order_page._cfg = SimpleNamespace(inner_text_read_ms=1000, low_delivery_rate_pct=60)
+        rate_text = "Delivery success rate: 50% (2/4)"
+        order_page.page = _FakePage(default_locator=_FakeLocator(
+            count_value=1,
+            inner_text_value=rate_text,
+        ))
+
+        is_low_rate, text = order_page._check_delivery_rate()
+
+        self.assertTrue(is_low_rate)
+        self.assertEqual(text, rate_text)
 
     def test_read_partner_name_prefers_chat_header_label(self):
         order_page = OrderPage.__new__(OrderPage)

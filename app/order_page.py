@@ -1060,7 +1060,7 @@ class OrderPage:
 
         Returns (is_low_rate, rate_text).
         - is_low_rate=True when rate < configured threshold (default 60%)
-        - 0/0 (first-time customer) is NOT considered low rate
+        - 0/0, x/1, and 1/2 are NOT considered low rate (sample too small)
         """
         try:
             el = self.page.locator("span.text-caption-2:has-text('Tỉ lệ giao thành công')").first
@@ -1074,8 +1074,8 @@ class OrderPage:
                 return False, text
             delivered, total = int(m.group(1)), int(m.group(2))
 
-            # 0/0 or x/1 = sample too small, not considered low rate
-            if total <= 1:
+            # 0/0, x/1, or 1/2 = sample too small, not considered low rate
+            if total <= 1 or (delivered == 1 and total == 2):
                 return False, text
 
             rate_pct = (delivered / total) * 100
