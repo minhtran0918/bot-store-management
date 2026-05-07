@@ -82,10 +82,30 @@ def _build_match_label(matched_count: int, total_products: int, resolved_tag: st
     return f"FULL 1-3 ({matched_count}/{total_products})"
 
 
-def _should_skip_for_run_mode(run_mode: str, resolved_tag: str) -> bool:
-    """Returns True when the current run mode filters out this tag."""
-    if run_mode == "tag_1_2_only":
+def _order_code_parity(order_code: str) -> str:
+    """Return 'even' or 'odd' based on trailing digits of the order code.
+
+    Empty/non-numeric codes default to 'even' so they're processed deterministically
+    by exactly one of the even/odd splits when running on parallel machines.
+    """
+    digits = "".join(c for c in (order_code or "") if c.isdigit())
+    if not digits:
+        return "even"
+    return "even" if int(digits) % 2 == 0 else "odd"
+
+
+def _should_skip_for_run_mode(run_mode: str, resolved_tag: str, order_code: str = "") -> bool:
+    """Returns True when the current run mode filters out this tag/order."""
+    if run_mode == "tag_1_2_all":
         return resolved_tag not in (TAG_1, TAG_2)
+    if run_mode == "tag_1_2_even":
+        if resolved_tag not in (TAG_1, TAG_2):
+            return True
+        return _order_code_parity(order_code) != "even"
+    if run_mode == "tag_1_2_odd":
+        if resolved_tag not in (TAG_1, TAG_2):
+            return True
+        return _order_code_parity(order_code) != "odd"
     if run_mode == "others_only":
         return resolved_tag in (TAG_1, TAG_2)
     return False
@@ -1938,8 +1958,12 @@ class OrderPage:
 
         whitelist = set(self._cfg.test_order_ids)
         _log(f"SINGLE-PASS started: rows={count} on page={page_index}")
-        if run_mode == "tag_1_2_only":
+        if run_mode == "tag_1_2_all":
             _log("TAG FILTER mode: only TAG 1 & TAG 2 will run actions")
+        elif run_mode == "tag_1_2_even":
+            _log("TAG FILTER mode: only TAG 1 & TAG 2 with EVEN order codes will run actions")
+        elif run_mode == "tag_1_2_odd":
+            _log("TAG FILTER mode: only TAG 1 & TAG 2 with ODD order codes will run actions")
         elif run_mode == "others_only":
             _log("TAG FILTER mode: TAG 1 & TAG 2 will be skipped")
         if whitelist:
@@ -2214,7 +2238,7 @@ class OrderPage:
                     row_data["Tag"] = resolved_tag
                     row_data["Note"] = f"addr={'ok' if have_address else 'empty'} match={matched_count}/{total_products}"
 
-                    if _should_skip_for_run_mode(run_mode, resolved_tag):
+                    if _should_skip_for_run_mode(run_mode, resolved_tag, order_code):
                         row_data["Decision"] = "skip_run_mode_filter"
                         row_data["Note"] = f"resolved_tag={resolved_tag} skipped_by_cli"
                         _log(f"  SKIP ALL ACTIONS: resolved_tag={resolved_tag} (run mode filter)")

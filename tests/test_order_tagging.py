@@ -79,15 +79,35 @@ class OrderTaggingTestCase(unittest.TestCase):
     def test_partial_match_label_is_explicit(self):
         self.assertEqual(_build_match_label(6, 7, TAG_2_2), "PARTIAL (6/7)")
 
-    def test_tag_1_2_only_allows_only_exact_tag_1_and_tag_2(self):
-        self.assertFalse(_should_skip_for_run_mode("tag_1_2_only", TAG_1))
-        self.assertFalse(_should_skip_for_run_mode("tag_1_2_only", TAG_2))
+    def test_tag_1_2_all_allows_only_exact_tag_1_and_tag_2(self):
+        self.assertFalse(_should_skip_for_run_mode("tag_1_2_all", TAG_1))
+        self.assertFalse(_should_skip_for_run_mode("tag_1_2_all", TAG_2))
 
-    def test_tag_1_2_only_skips_other_tags(self):
-        self.assertTrue(_should_skip_for_run_mode("tag_1_2_only", TAG_0))
-        self.assertTrue(_should_skip_for_run_mode("tag_1_2_only", TAG_1_1))
-        self.assertTrue(_should_skip_for_run_mode("tag_1_2_only", TAG_1_2))
-        self.assertTrue(_should_skip_for_run_mode("tag_1_2_only", TAG_1_4))
+    def test_tag_1_2_all_skips_other_tags(self):
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_all", TAG_0))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_all", TAG_1_1))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_all", TAG_1_2))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_all", TAG_1_4))
+
+    def test_tag_1_2_even_allows_only_even_order_codes(self):
+        self.assertFalse(_should_skip_for_run_mode("tag_1_2_even", TAG_1, "SO124"))
+        self.assertFalse(_should_skip_for_run_mode("tag_1_2_even", TAG_2, "ORD-100"))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_even", TAG_1, "SO123"))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_even", TAG_2, "ORD-101"))
+
+    def test_tag_1_2_even_skips_non_tag_1_or_2(self):
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_even", TAG_1_1, "SO124"))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_even", TAG_0, "SO124"))
+
+    def test_tag_1_2_odd_allows_only_odd_order_codes(self):
+        self.assertFalse(_should_skip_for_run_mode("tag_1_2_odd", TAG_1, "SO123"))
+        self.assertFalse(_should_skip_for_run_mode("tag_1_2_odd", TAG_2, "ORD-101"))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_odd", TAG_1, "SO124"))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_odd", TAG_2, "ORD-100"))
+
+    def test_tag_1_2_odd_skips_non_tag_1_or_2(self):
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_odd", TAG_1_2, "SO123"))
+        self.assertTrue(_should_skip_for_run_mode("tag_1_2_odd", TAG_0, "SO123"))
 
     def test_all_mode_does_not_skip(self):
         self.assertFalse(_should_skip_for_run_mode("all", TAG_1_1))

@@ -9,7 +9,9 @@ FEATURE_CONFIRM_ORDER = "confirm_order"
 TOTAL_STEPS = 4
 
 RUN_MODE_ALL = "all"
-RUN_MODE_TAG_1_2 = "tag_1_2_only"
+RUN_MODE_TAG_1_2_ALL = "tag_1_2_all"
+RUN_MODE_TAG_1_2_EVEN = "tag_1_2_even"
+RUN_MODE_TAG_1_2_ODD = "tag_1_2_odd"
 RUN_MODE_OTHERS = "others_only"
 
 
@@ -89,7 +91,9 @@ def prompt_campaign_label() -> str:
 def prompt_run_mode() -> str:
     choices = [
         {"name": "Xử lý tất cả đơn hàng", "value": RUN_MODE_ALL},
-        {"name": "Xử lý TAG 1 và TAG 2", "value": RUN_MODE_TAG_1_2},
+        {"name": "Xử lý TAG 1 và TAG 2: tất cả", "value": RUN_MODE_TAG_1_2_ALL},
+        {"name": "Xử lý TAG 1 và TAG 2: mã đơn chẵn", "value": RUN_MODE_TAG_1_2_EVEN},
+        {"name": "Xử lý TAG 1 và TAG 2: mã đơn lẻ", "value": RUN_MODE_TAG_1_2_ODD},
         {"name": "Xử lý các TAG còn lại (trừ TAG 1 và TAG 2)", "value": RUN_MODE_OTHERS},
     ]
     return select("Chọn chế độ chạy", choices, step=3, total=TOTAL_STEPS, default=RUN_MODE_ALL)

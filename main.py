@@ -79,7 +79,13 @@ def main():
         ("Campaign", campaign_label),
     ]
     if feature_run == FEATURE_CONFIRM_ORDER:
-        mode_labels = {"all": "Tất cả", "tag_1_2_only": "TAG 1 & TAG 2", "others_only": "Các TAG còn lại"}
+        mode_labels = {
+            "all": "Tất cả",
+            "tag_1_2_all": "TAG 1 & TAG 2 (tất cả)",
+            "tag_1_2_even": "TAG 1 & TAG 2 (mã đơn chẵn)",
+            "tag_1_2_odd": "TAG 1 & TAG 2 (mã đơn lẻ)",
+            "others_only": "Các TAG còn lại",
+        }
         summary_items.append(("Chế độ chạy", mode_labels.get(run_mode, run_mode)))
         summary_items.append(("Price Codes", price_map_text))
     show_summary(summary_items)
