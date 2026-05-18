@@ -123,6 +123,26 @@ class OrderTaggingTestCase(unittest.TestCase):
         self.assertFalse(_should_skip_for_run_mode("others_only", TAG_2_1))
         self.assertFalse(_should_skip_for_run_mode("others_only", TAG_2_2))
 
+    def test_others_even_allows_only_remaining_tags_with_even_order_codes(self):
+        self.assertFalse(_should_skip_for_run_mode("others_even", TAG_0, "SO124"))
+        self.assertFalse(_should_skip_for_run_mode("others_even", TAG_1_1, "ORD-100"))
+        self.assertTrue(_should_skip_for_run_mode("others_even", TAG_0, "SO123"))
+        self.assertTrue(_should_skip_for_run_mode("others_even", TAG_1_2, "ORD-101"))
+
+    def test_others_even_skips_tag_1_and_tag_2(self):
+        self.assertTrue(_should_skip_for_run_mode("others_even", TAG_1, "SO124"))
+        self.assertTrue(_should_skip_for_run_mode("others_even", TAG_2, "SO124"))
+
+    def test_others_odd_allows_only_remaining_tags_with_odd_order_codes(self):
+        self.assertFalse(_should_skip_for_run_mode("others_odd", TAG_0, "SO123"))
+        self.assertFalse(_should_skip_for_run_mode("others_odd", TAG_2_1, "ORD-101"))
+        self.assertTrue(_should_skip_for_run_mode("others_odd", TAG_0, "SO124"))
+        self.assertTrue(_should_skip_for_run_mode("others_odd", TAG_2_2, "ORD-100"))
+
+    def test_others_odd_skips_tag_1_and_tag_2(self):
+        self.assertTrue(_should_skip_for_run_mode("others_odd", TAG_1, "SO123"))
+        self.assertTrue(_should_skip_for_run_mode("others_odd", TAG_2, "SO123"))
+
     def test_customer_without_any_tag_is_treated_as_normal(self):
         order_page = OrderPage.__new__(OrderPage)
         order_page._cfg = SimpleNamespace(skip_customer_tags=["skip-tag"])

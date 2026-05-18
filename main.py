@@ -84,7 +84,9 @@ def main():
             "tag_1_2_all": "TAG 1 & TAG 2 (tất cả)",
             "tag_1_2_even": "TAG 1 & TAG 2 (mã đơn chẵn)",
             "tag_1_2_odd": "TAG 1 & TAG 2 (mã đơn lẻ)",
-            "others_only": "Các TAG còn lại",
+            "others_only": "Các TAG còn lại (tất cả)",
+            "others_even": "Các TAG còn lại (mã đơn chẵn)",
+            "others_odd": "Các TAG còn lại (mã đơn lẻ)",
         }
         summary_items.append(("Chế độ chạy", mode_labels.get(run_mode, run_mode)))
         summary_items.append(("Price Codes", price_map_text))
